@@ -38,9 +38,24 @@ export const useAutoReset = () => {
                     needsUpdate = true;
                 }
 
-                // Check Monthly Goals
+                // Check Monthly Goals & Bills
                 if (metadata.last_monthly_reset !== currentMonthly) {
                     await supabase.from('goals').update({ completed: false }).eq('period', 'monthly').eq('user_id', user.id);
+
+                    // Reset recurring monthly bills: un-pay them and advance their due_date to the current month
+                    const { data: billsData } = await supabase.from('finance_bills').select('id, due_date').eq('frequency', 'monthly').eq('user_id', user.id);
+                    if (billsData && billsData.length > 0) {
+                        for (const bill of billsData) {
+                            // Safely extract the day to avoid UTC timezone negative offset bugs
+                            const day = parseInt(bill.due_date.split('-')[2], 10);
+                            const newDate = new Date(today.getFullYear(), today.getMonth(), day);
+                            await supabase.from('finance_bills').update({
+                                paid: false,
+                                due_date: format(newDate, 'yyyy-MM-dd')
+                            }).eq('id', bill.id);
+                        }
+                    }
+
                     newMetadata.last_monthly_reset = currentMonthly;
                     needsUpdate = true;
                 }

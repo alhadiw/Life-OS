@@ -193,6 +193,46 @@ const ExerciseView: React.FC = () => {
     const totalWorkouts = workouts.length;
     const totalMinutes = workouts.reduce((acc, w) => acc + w.durationMinutes, 0);
 
+    const calculateStreak = () => {
+        if (!workouts.length) return 0;
+
+        // Get unique dates
+        const uniqueDates = Array.from(new Set(workouts.map(w => w.date))).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+        const todayDate = new Date();
+        const todayStr = todayDate.toISOString().split('T')[0];
+        const yesterdayDate = new Date(todayDate);
+        yesterdayDate.setDate(todayDate.getDate() - 1);
+        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+
+        let streak = 0;
+        let currentDateToCheck = new Date();
+        let currentStr = currentDateToCheck.toISOString().split('T')[0];
+
+        // If no workout today or yesterday, streak is 0
+        if (!uniqueDates.includes(todayStr) && !uniqueDates.includes(yesterdayStr)) {
+            return 0;
+        }
+
+        // Start checking backwards
+        // If they worked out today, we start checking from today backwards.
+        // If they worked out yesterday but NOT today, we start checking from yesterday backwards.
+        if (!uniqueDates.includes(todayStr) && uniqueDates.includes(yesterdayStr)) {
+            currentDateToCheck = new Date(yesterdayDate);
+            currentStr = currentDateToCheck.toISOString().split('T')[0];
+        }
+
+        while (uniqueDates.includes(currentStr)) {
+            streak++;
+            currentDateToCheck.setDate(currentDateToCheck.getDate() - 1);
+            currentStr = currentDateToCheck.toISOString().split('T')[0];
+        }
+
+        return streak;
+    };
+
+    const currentStreak = calculateStreak();
+
     return (
         <div className="animate-fade-in">
             <div className="page-header mb-lg">
@@ -224,7 +264,7 @@ const ExerciseView: React.FC = () => {
                     <div className="stat-icon bg-danger-light"><Flame size={24} className="text-danger" /></div>
                     <div>
                         <div className="stat-label">Current Streak</div>
-                        <div className="stat-value">2 Days</div>
+                        <div className="stat-value">{currentStreak} {currentStreak === 1 ? 'Day' : 'Days'}</div>
                     </div>
                 </Card>
             </div>

@@ -299,6 +299,18 @@ const FinanceView: React.FC = () => {
                             <Input type="number" step="0.01" label="Amount" value={newBill.amount} onChange={e => setNewBill({ ...newBill, amount: Number(e.target.value) })} required />
                             <Input type="date" label="Due Date" value={newBill.dueDate} onChange={e => setNewBill({ ...newBill, dueDate: e.target.value })} required />
                         </div>
+                        <div className="form-group mb-md mt-sm">
+                            <label className="input-label">Bill Type (Frequency)</label>
+                            <select
+                                className="input-field"
+                                value={newBill.frequency}
+                                onChange={e => setNewBill({ ...newBill, frequency: e.target.value })}
+                            >
+                                <option value="monthly">Recurring (Monthly)</option>
+                                <option value="one-time">One-Time Only</option>
+                            </select>
+                            <p className="text-muted text-sm mt-xs">Recurring bills will automatically reset and update their due date on the 1st of every month.</p>
+                        </div>
                         <div className="form-actions mt-md">
                             <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
                             <Button type="submit">Create Bill</Button>
@@ -356,7 +368,7 @@ const FinanceView: React.FC = () => {
                                     <div className="bill-details">
                                         <h4 className="bill-title">{bill.name}</h4>
                                         <div className="bill-meta">
-                                            <span className="badge badge-neutral">{bill.category}</span>
+                                            <span className="badge badge-neutral">{bill.frequency === 'monthly' ? 'Recurring (Monthly)' : 'One-Time'}</span>
                                             <span className="bill-date"><Calendar size={14} /> Due {bill.dueDate}</span>
                                         </div>
                                     </div>
@@ -457,6 +469,17 @@ const FinanceView: React.FC = () => {
                         <div className="form-row">
                             <Input type="number" step="0.01" label="Amount" value={editingBill.amount} onChange={e => setEditingBill({ ...editingBill, amount: Number(e.target.value) })} required />
                             <Input type="date" label="Due Date" value={editingBill.dueDate} onChange={e => setEditingBill({ ...editingBill, dueDate: e.target.value })} required />
+                        </div>
+                        <div className="form-group mb-md mt-sm">
+                            <label className="input-label">Bill Type (Frequency)</label>
+                            <select
+                                className="input-field"
+                                value={editingBill.frequency}
+                                onChange={e => setEditingBill({ ...editingBill, frequency: e.target.value })}
+                            >
+                                <option value="monthly">Recurring (Monthly)</option>
+                                <option value="one-time">One-Time Only</option>
+                            </select>
                         </div>
                         <div className="form-actions mt-md">
                             <Button type="button" variant="ghost" onClick={() => setEditingBill(null)}>Cancel</Button>

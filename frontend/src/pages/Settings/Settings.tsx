@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { User, Sliders, Database, Download, Save, AlertTriangle } from 'lucide-react';
+import { User, Sliders, Database, Download, Save, AlertTriangle, LogOut } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -253,12 +253,28 @@ const SettingsView: React.FC = () => {
                                     }
                                 }}>Change Password</Button>
                             </div>
-                            <div className="form-actions mt-lg">
+                            <div className="form-actions mt-lg" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                                 <Button type="submit" disabled={isSavingProfile}>
                                     <Save size={16} /> {isSavingProfile ? 'Saving...' : 'Save Profile'}
                                 </Button>
                             </div>
                         </form>
+                    </Card>
+                </section>
+
+                {/* Account Access */}
+                <section className="settings-section">
+                    <div className="section-header">
+                        <LogOut size={20} className="text-primary" />
+                        <h3>Account Access</h3>
+                    </div>
+                    <Card glass padding="lg">
+                        <p className="text-secondary mb-md">Sign out of your Life OS account on this device.</p>
+                        <Button type="button" variant="secondary" onClick={() => {
+                            if (window.confirm('Are you sure you want to log out?')) signOut();
+                        }}>
+                            <LogOut size={16} /> Log Out
+                        </Button>
                     </Card>
                 </section>
 
