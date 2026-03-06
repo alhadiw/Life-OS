@@ -160,7 +160,7 @@ const DashboardView: React.FC = () => {
             {/* LEFT COLUMN: Tasks & Goals */}
             <div className="dashboard-main">
                 <div className="page-header mb-md">
-                    <h2>Good Morning!</h2>
+                    <h2>Hello!</h2>
                     <p className="text-secondary mt-1">Here is your life at a glance today.</p>
                 </div>
 
