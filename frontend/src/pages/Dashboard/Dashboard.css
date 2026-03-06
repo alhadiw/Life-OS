@@ -1,0 +1,176 @@
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 2rem;
+    align-items: start;
+}
+
+@media (max-width: 992px) {
+    .dashboard-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dashboard-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 104px;
+}
+
+.quick-add-form {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.quick-add-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.quick-add-input:focus {
+    outline: none;
+}
+
+.widget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.widget-title-icon {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.widget-header h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.widget-link {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.dashboard-task-card {
+    transition: all 0.2s ease;
+}
+
+.dashboard-task-inner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.task-checkbox {
+    width: 20px;
+    height: 20px;
+}
+
+.dashboard-task-card.completed {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.dashboard-task-card.completed .task-title {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+.goals-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.goal-summary-stats {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+/* Sidebar Widgets */
+.hoverable-widget {
+    transition: all 0.2s ease;
+}
+
+.hoverable-widget:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.widget-click-target {
+    color: inherit;
+    text-decoration: none;
+}
+
+.widget-click-target:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.f-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9375rem;
+}
+
+.border-bottom {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pb-sm {
+    padding-bottom: 0.5rem;
+}
+
+.exercise-big-stat {
+    font-size: 2rem;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.text-sm {
+    font-size: 0.875rem;
+    font-family: var(--font-body);
+    font-weight: 400;
+}
+
+.reading-mini-content {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.reading-mini-cover {
+    width: 60px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+.py-md {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}

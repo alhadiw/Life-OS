@@ -1,0 +1,188 @@
+.finance-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.stat-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bg-primary-light {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.bg-success-light {
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.bg-danger-light {
+    background: rgba(244, 63, 94, 0.15);
+}
+
+.stat-card .stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.stat-card .stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    font-family: var(--font-heading);
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.finance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.finance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Bills specific */
+.bill-card-inner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.bill-details {
+    flex: 1;
+}
+
+.bill-title {
+    font-size: 1.0625rem;
+    margin: 0 0 0.25rem 0;
+    font-weight: 500;
+}
+
+.bill-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.bill-date {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.bill-amount {
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-family: var(--font-heading);
+}
+
+.bill-card.paid {
+    border-style: dashed;
+    opacity: 0.7;
+}
+
+.bill-card.paid .bill-title {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+/* Savings Specific */
+.savings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.savings-header h4 {
+    margin: 0;
+    font-size: 1.125rem;
+}
+
+.savings-amounts {
+    font-family: var(--font-heading);
+}
+
+.savings-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Investments Table */
+.investments-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface-solid);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.investments-table th,
+.investments-table td {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.investments-table th {
+    background: var(--surface-hover);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.investments-table tr:last-child td {
+    border-bottom: none;
+}
+
+@media (max-width: 640px) {
+
+    .investments-table th,
+    .investments-table td {
+        padding: 0.75rem 1rem;
+    }
+}
+
+/* Edit and Delete Actions */
+.finance-actions {
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    align-items: center;
+}
+
+.bill-card:hover .finance-actions,
+.savings-card:hover .finance-actions,
+.investments-table tr:hover .finance-actions {
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    .finance-actions {
+        opacity: 1;
+    }
+}
