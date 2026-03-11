@@ -248,7 +248,9 @@ const SettingsView: React.FC = () => {
                             <div className="form-group">
                                 <Button variant="secondary" type="button" onClick={async () => {
                                     if (window.confirm('Send a password recovery link to your email?')) {
-                                        await supabase.auth.resetPasswordForEmail(user?.email || '');
+                                        await supabase.auth.resetPasswordForEmail(user?.email || '', {
+                                            redirectTo: `${window.location.origin}/update-password`,
+                                        });
                                         alert('Password reset link sent!');
                                     }
                                 }}>Change Password</Button>

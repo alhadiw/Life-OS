@@ -27,7 +27,13 @@ const LoginView: React.FC = () => {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
             } else if (mode === 'signup') {
-                const { error } = await supabase.auth.signUp({ email, password });
+                const { error } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        emailRedirectTo: `${window.location.origin}/`
+                    }
+                });
                 if (error) throw error;
                 setMessage('Account created! Please log in or verify your email.');
                 setMode('login');
