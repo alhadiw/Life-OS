@@ -51,7 +51,7 @@ export const Layout: React.FC = () => {
                 </div>
             </main>
 
-            {/* Mobile nav could be implemented here for small screens */}
+            {/* Mobile nav */}
             <nav className="mobile-nav glass-panel">
                 <NavLink to="/" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'} end>
                     <LayoutDashboard size={24} />
@@ -64,6 +64,15 @@ export const Layout: React.FC = () => {
                 </NavLink>
                 <NavLink to="/books" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                     <BookOpen size={24} />
+                </NavLink>
+                <NavLink to="/exercise" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+                    <Activity size={24} />
+                </NavLink>
+                <NavLink to="/lists" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+                    <List size={24} />
+                </NavLink>
+                <NavLink to="/history" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+                    <History size={24} />
                 </NavLink>
                 <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                     <Settings size={24} />

@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Check, WalletCards, BookOpen, Activity, Plus } from 'lucide-react';
+import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './Dashboard.css';
 
@@ -14,6 +14,9 @@ const DashboardView: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const [quickTaskText, setQuickTaskText] = useState('');
+    const [rewardText, setRewardText] = useState('');
+    const [rewardPoints, setRewardPoints] = useState<number | ''>('');
+    const [rewardSuccess, setRewardSuccess] = useState(false);
     const [dailyTasks, setDailyTasks] = useState<any[]>([]);
 
     // Aggregated state
@@ -22,6 +25,7 @@ const DashboardView: React.FC = () => {
     const [finance, setFinance] = useState({ upcomingBills: 0, savings: 0, investments: 0 });
     const [currentBook, setCurrentBook] = useState<any>(null);
     const [exerciseWeek, setExerciseWeek] = useState({ sessions: 0, target: 0 });
+    const [userLists, setUserLists] = useState<any[]>([]);
 
     useEffect(() => {
         if (user) fetchDashboardData();
@@ -102,6 +106,14 @@ const DashboardView: React.FC = () => {
                 target: exGoals ? exGoals.target_value : 0
             });
 
+            // 6. Fetch User Lists
+            const { data: listsData } = await supabase
+                .from('user_lists')
+                .select('id, name, icon')
+                .eq('user_id', user?.id)
+                .limit(3);
+            if (listsData) setUserLists(listsData);
+
         } catch (error) {
             console.error('Error fetching dashboard summary:', error);
         } finally {
@@ -128,6 +140,21 @@ const DashboardView: React.FC = () => {
                 setDailyTasks([{ id: data.id, title: data.title, points: data.points, completed: data.completed }, ...dailyTasks]);
             }
             setQuickTaskText('');
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleQuickReward = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !rewardText.trim() || !rewardPoints || rewardPoints <= 0) return;
+
+        try {
+            await addPoints(Number(rewardPoints), `Custom Reward: ${rewardText}`);
+            setRewardText('');
+            setRewardPoints('');
+            setRewardSuccess(true);
+            setTimeout(() => setRewardSuccess(false), 3000);
         } catch (e) {
             console.error(e);
         }
@@ -176,6 +203,38 @@ const DashboardView: React.FC = () => {
                             className="quick-add-input"
                         />
                         {quickTaskText && <Button type="submit" size="sm">Add</Button>}
+                    </form>
+                </Card>
+
+                {/* Reward Yourself */}
+                <Card glass padding="sm" className="mb-lg">
+                    <form onSubmit={handleQuickReward} className="quick-add-form">
+                        <Gift size={20} className="text-primary" />
+                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Reward yourself for..."
+                                    value={rewardText}
+                                    onChange={e => setRewardText(e.target.value)}
+                                    className="quick-add-input"
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Pts"
+                                    value={rewardPoints}
+                                    onChange={e => setRewardPoints(e.target.value === '' ? '' : Number(e.target.value))}
+                                    className="quick-add-input"
+                                    style={{ width: '70px', flex: 'none' }}
+                                    min="1"
+                                    required
+                                />
+                                <Button type="submit" size="sm" variant="primary">Claim</Button>
+                            </div>
+                            {rewardSuccess && <div className="text-success text-sm animate-fade-in" style={{ paddingLeft: '0.5rem' }}>Points awarded successfully!</div>}
+                        </div>
                     </form>
                 </Card>
 
@@ -259,6 +318,30 @@ const DashboardView: React.FC = () => {
                                 <span className="font-bold text-primary">{currencySymbol}{finance.investments.toLocaleString()}</span>
                             </div>
                         </div>
+                    </Link>
+                </Card>
+
+                {/* My Lists Preview */}
+                <Card glass padding="md" className="widget mb-md hoverable-widget">
+                    <Link to="/lists" className="widget-click-target">
+                        <div className="widget-header mb-sm">
+                            <div className="widget-title-icon">
+                                <List size={18} className="text-secondary" />
+                                <h3>My Lists</h3>
+                            </div>
+                        </div>
+                        {userLists.length > 0 ? (
+                            <div className="lists-mini-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {userLists.map(list => (
+                                    <div key={list.id} className="list-mini-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-hover)', padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}>
+                                        {list.icon && <span>{list.icon}</span>}
+                                        <span className="font-medium text-sm">{list.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-secondary text-sm mt-md">No lists created yet. Create one!</p>
+                        )}
                     </Link>
                 </Card>
 
