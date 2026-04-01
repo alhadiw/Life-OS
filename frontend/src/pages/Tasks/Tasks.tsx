@@ -221,6 +221,10 @@ const TasksView: React.FC = () => {
     const uncompletedTasks = tasks.filter(t => !t.completed);
     const completedTasks = tasks.filter(t => t.completed);
 
+    const pointsEarned = completedTasks.reduce((sum, t) => sum + t.points, 0);
+    const pointsTotal = tasks.reduce((sum, t) => sum + t.points, 0);
+    const progressPercent = pointsTotal > 0 ? (pointsEarned / pointsTotal) * 100 : 0;
+
     return (
         <div className="animate-fade-in">
             <div className="page-header mb-lg">
@@ -238,6 +242,31 @@ const TasksView: React.FC = () => {
                 <button className={`tab ${activeTab === 'weekly' ? 'active' : ''}`} onClick={() => handleTabChange('weekly')}>Weekly Goals</button>
                 <button className={`tab ${activeTab === 'monthly' ? 'active' : ''}`} onClick={() => handleTabChange('monthly')}>Monthly Goals</button>
             </div>
+
+            {/* Earnings Summary */}
+            <Card glass padding="md" className="mb-lg">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        <div>
+                            <div className="text-secondary text-sm font-medium mb-1">
+                                {activeTab === 'daily' ? "Today's" : activeTab === 'weekly' ? "This Week's" : "This Month's"} Earnings
+                            </div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, lineHeight: 1 }}>
+                                <span className="text-primary">{pointsEarned}</span>
+                                <span className="text-muted" style={{ fontSize: '1.125rem' }}> / {pointsTotal} pts</span>
+                            </div>
+                        </div>
+                        {pointsTotal > 0 && pointsEarned === pointsTotal && (
+                            <div className="text-success font-bold text-sm animate-fade-in mb-1">All completed! 🎉</div>
+                        )}
+                    </div>
+                    {pointsTotal > 0 && (
+                        <div style={{ width: '100%', height: '8px', background: 'var(--surface-hover)', borderRadius: '4px', overflow: 'hidden', marginTop: '0.25rem' }}>
+                            <div style={{ width: `${progressPercent}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s ease' }} />
+                        </div>
+                    )}
+                </div>
+            </Card>
 
             {showForm && (
                 <Card glass className="mb-lg">
