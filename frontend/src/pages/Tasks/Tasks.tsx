@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useToast } from '../../contexts/ToastContext';
+import { todayISO, addDays, startOfWeekISO, endOfMonthISO } from '../../lib/dates';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -24,6 +26,7 @@ interface Task {
 const TasksView: React.FC = () => {
     const { addPoints, removePoints } = usePoints();
     const { user } = useAuth();
+    const toast = useToast();
 
     const [tasks, setTasks] = useState<Task[]>([]);
     const [activeTab, setActiveTab] = useState<TaskTier>('daily');
@@ -59,7 +62,7 @@ const TasksView: React.FC = () => {
                         category: t.category || 'General',
                         tier: 'daily',
                         completed: t.completed,
-                        dueDate: t.due_date
+                        dueDate: t.due_date ?? undefined
                     })));
                 }
             } else {
@@ -94,21 +97,26 @@ const TasksView: React.FC = () => {
 
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
 
+        // Persist the checkbox first. This used to award the points *before*
+        // the update and then, on failure, revert only the checkbox — leaving
+        // the ledger paying out for a task the database still had as open.
+        const table = task.tier === 'daily' ? 'tasks' : 'goals';
+        const { error } = await supabase
+            .from(table)
+            .update({ completed: newCompletedStatus })
+            .eq('id', task.id);
+
+        if (error) {
+            console.error('Error updating task:', error);
+            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
+            toast.error("Couldn't save that — your points are unchanged.");
+            return;
+        }
+
         if (newCompletedStatus) {
             await addPoints(task.points, `Completed ${task.tier} task: ${task.title}`);
         } else {
             await removePoints(task.points, `Unchecked ${task.tier} task: ${task.title}`);
-        }
-
-        try {
-            if (task.tier === 'daily') {
-                await supabase.from('tasks').update({ completed: newCompletedStatus }).eq('id', task.id);
-            } else {
-                await supabase.from('goals').update({ completed: newCompletedStatus }).eq('id', task.id);
-            }
-        } catch (error) {
-            console.error('Error updating task:', error);
-            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
         }
     };
 
@@ -134,20 +142,18 @@ const TasksView: React.FC = () => {
                     setTasks(prev => [task, ...prev]);
                 }
             } else {
-                const today = new Date();
-                let targetDate = new Date();
-
-                if (activeTab === 'weekly') {
-                    const day = today.getDay();
-                    const diff = today.getDate() - day + (day === 0 ? -6 : 1) + 6; // Sunday
-                    targetDate.setDate(diff);
-                } else if (activeTab === 'monthly') {
-                    targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0); // Month End
-                }
+                // A weekly goal is due at the end of this week, a monthly one at
+                // the end of this month — in the user's calendar (FIX-6). The
+                // old day-of-month arithmetic here could roll into the wrong
+                // month near a boundary.
+                const today = todayISO();
+                const targetDate = activeTab === 'weekly'
+                    ? addDays(startOfWeekISO(today), 6)
+                    : endOfMonthISO(today);
 
                 const { data, error } = await supabase.from('goals').insert({
                     user_id: user.id, title: newTask.title, points: newTask.points,
-                    category: newTask.category, period: activeTab, target_date: targetDate.toISOString().split('T')[0]
+                    category: newTask.category, period: activeTab, target_date: targetDate
                 }).select().single();
 
                 if (error) throw error;

@@ -23,11 +23,7 @@ const HistoryView: React.FC = () => {
         e.preventDefault();
         if (!redeemDesc || !redeemAmount || Number(redeemAmount) <= 0) return;
 
-        if (Number(redeemAmount) > unspentPoints) {
-            alert("You don't have enough points for this redemption.");
-            return;
-        }
-
+        // spendPoints itself refuses and explains if the balance is short.
         spendPoints(Number(redeemAmount), redeemDesc);
         setShowRedeemForm(false);
         setRedeemDesc('');
@@ -42,8 +38,8 @@ const HistoryView: React.FC = () => {
                     <p className="text-secondary mt-1">A complete ledger of your achievements and rewards.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <Button variant="ghost" className="text-danger hover-danger" onClick={clearHistory} title="Permanently delete all history and reset points to 0">
-                        <Trash2 size={18} /> Clear History
+                    <Button variant="ghost" className="text-danger hover-danger" onClick={clearHistory} title="Permanently delete every points transaction and reset your balance to 0. Nothing else is affected.">
+                        <Trash2 size={18} /> Erase Points History
                     </Button>
                     <Button onClick={() => setShowRedeemForm(!showRedeemForm)}>
                         <Gift size={18} /> Redeem Points

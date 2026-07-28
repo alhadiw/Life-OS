@@ -43,7 +43,8 @@ const BooksView: React.FC = () => {
             if (data) {
                 setBooks(data.map(b => ({
                     id: b.id, title: b.title, author: b.author, status: b.status as BookStatus,
-                    genre: b.genre, rating: b.rating, coverImage: b.cover_image
+                    genre: b.genre ?? undefined, rating: b.rating ?? undefined,
+                    coverImage: b.cover_image ?? undefined
                 })));
             }
         } catch (error) {
@@ -71,7 +72,7 @@ const BooksView: React.FC = () => {
             if (data) {
                 setBooks(prev => [{
                     id: data.id, title: data.title, author: data.author, status: data.status as BookStatus,
-                    genre: data.genre, coverImage: data.cover_image
+                    genre: data.genre ?? undefined, coverImage: data.cover_image ?? undefined
                 }, ...prev]);
             }
             setShowForm(false);

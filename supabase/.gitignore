@@ -1,0 +1,5 @@
+# Supabase CLI local state — contains the pooler connection string WITH the database password.
+# Never commit.
+.branches
+.temp
+.env

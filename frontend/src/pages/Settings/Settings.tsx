@@ -2,15 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { User, Sliders, Database, Download, Save, AlertTriangle, LogOut } from 'lucide-react';
+import { User, Sliders, Database, Download, Save, AlertTriangle, LogOut, WalletCards } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { todayISO, getUserTimezone } from '../../lib/dates';
+import { errorMessage } from '../../lib/errors';
 import './Settings.css';
 
 const SettingsView: React.FC = () => {
     const { conversionRate, setConversionRate, currencySymbol, setCurrencySymbol, unspentPoints } = usePoints();
     const { user, signOut } = useAuth();
+    const toast = useToast();
 
     const [localRate, setLocalRate] = useState(conversionRate.toString());
     const [localSymbol, setLocalSymbol] = useState(currencySymbol);
@@ -23,6 +27,7 @@ const SettingsView: React.FC = () => {
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isResettingFinance, setIsResettingFinance] = useState(false);
 
     useEffect(() => {
         setLocalRate(conversionRate.toString());
@@ -50,7 +55,7 @@ const SettingsView: React.FC = () => {
             await setConversionRate(rateNumber);
         }
         await setCurrencySymbol(localSymbol);
-        alert('Economics settings saved successfully!');
+        toast.success('Economy settings saved.');
     };
 
     const handleSaveProfile = async (e: React.FormEvent) => {
@@ -68,12 +73,12 @@ const SettingsView: React.FC = () => {
             if (profileData.email !== user.email) {
                 const { error: emailError } = await supabase.auth.updateUser({ email: profileData.email });
                 if (emailError) throw emailError;
-                alert('Profile saved! If you changed your email, please check your inbox to verify it.');
+                toast.success('Profile saved. Check your inbox to confirm the new email address.');
             } else {
-                alert('Profile saved successfully!');
+                toast.success('Profile saved.');
             }
-        } catch (err: any) {
-            alert(err.message || 'Failed to update profile.');
+        } catch (err) {
+            toast.error(errorMessage(err) || 'Failed to update profile.');
         } finally {
             setIsSavingProfile(false);
         }
@@ -104,6 +109,7 @@ const SettingsView: React.FC = () => {
             const exportPayload = {
                 version: "1.0",
                 exportedAt: new Date().toISOString(),
+                timezone: getUserTimezone(),
                 user: { id: user.id, email: user.email },
                 data: {
                     tasks: tasks.data,
@@ -120,23 +126,79 @@ const SettingsView: React.FC = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `lifeos-backup-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `lifeos-backup-${todayISO()}.json`;
             a.click();
-        } catch (err: any) {
-            alert('Failed to export data: ' + err.message);
+            URL.revokeObjectURL(url);
+            toast.success('Backup downloaded.');
+        } catch (err) {
+            toast.error('Failed to export data: ' + errorMessage(err));
         } finally {
             setIsExporting(false);
         }
     };
 
-    const handleDeleteAccount = async () => {
+    /**
+     * Wipe the Finance Hub — and only the Finance Hub (FIX-9).
+     *
+     * This used to be a hidden side effect of "Clear History" on the Points
+     * page, where nothing in the button label suggested your bills and
+     * investments were about to go with it.
+     */
+    const handleResetFinance = async () => {
         if (!user) return;
-        if (!window.confirm("CRITICAL WARNING: This will permanently delete all your data. This action CANNOT be undone. Are you absolutely sure?")) return;
+        if (!window.confirm(
+            'Delete every bill, savings goal and investment?\n\nYour points, tasks, books, '
+            + 'workouts and lists are not affected. This cannot be undone.'
+        )) return;
+
+        setIsResettingFinance(true);
+        try {
+            const results = await Promise.all([
+                supabase.from('finance_bills').delete().eq('user_id', user.id),
+                supabase.from('finance_savings').delete().eq('user_id', user.id),
+                supabase.from('finance_investments').delete().eq('user_id', user.id)
+            ]);
+
+            const failure = results.find(r => r.error);
+            if (failure?.error) throw failure.error;
+
+            toast.success('Finance Hub cleared.');
+        } catch (err) {
+            console.error('Failed to reset finance data:', err);
+            toast.error('Failed to clear your Finance Hub: ' + errorMessage(err));
+        } finally {
+            setIsResettingFinance(false);
+        }
+    };
+
+    /**
+     * Erase every row of the user's data (FIX-4).
+     *
+     * What this deliberately does *not* do is delete the `profiles` row or the
+     * `auth.users` row. The RLS DELETE policy on `profiles` now exists, so the
+     * delete would succeed — but removing the profile while the login survives
+     * is worse than leaving it: every other table's foreign key points at
+     * `profiles`, so the account would still be able to sign in and then fail
+     * to write anything. Removing the login itself needs service-role access
+     * the browser doesn't have, which is FIX-5 (an Edge Function).
+     *
+     * Until then this is presented for what it actually is — erasing your data,
+     * not deleting your account. The previous version claimed to delete the
+     * account, silently no-op'd on the profile, and reported success anyway.
+     */
+    const handleEraseAllData = async () => {
+        if (!user) return;
+        if (!window.confirm(
+            'Permanently erase all of your Life OS data?\n\n'
+            + 'Tasks, goals, points history, finances, books, workouts and lists will all be '
+            + 'deleted. Your login and your settings will remain, so you can start fresh.\n\n'
+            + 'This cannot be undone. Export a backup first if you might want it back.'
+        )) return;
 
         setIsDeleting(true);
         try {
-            // Clean up all user data
-            await Promise.all([
+            // list_items cascades from user_lists, so it isn't listed here.
+            const results = await Promise.all([
                 supabase.from('tasks').delete().eq('user_id', user.id),
                 supabase.from('goals').delete().eq('user_id', user.id),
                 supabase.from('finance_bills').delete().eq('user_id', user.id),
@@ -145,18 +207,20 @@ const SettingsView: React.FC = () => {
                 supabase.from('books').delete().eq('user_id', user.id),
                 supabase.from('exercises').delete().eq('user_id', user.id),
                 supabase.from('exercise_goals').delete().eq('user_id', user.id),
-                // lists deletion auto-cascades to list_items
                 supabase.from('user_lists').delete().eq('user_id', user.id),
                 supabase.from('points_history').delete().eq('user_id', user.id)
             ]);
 
-            // Delete profile
-            await supabase.from('profiles').delete().eq('id', user.id);
+            // Previously every one of these errors was discarded, so a partial
+            // wipe reported the same success as a complete one.
+            const failure = results.find(r => r.error);
+            if (failure?.error) throw failure.error;
 
-            // Sign out
+            toast.success('All your data has been erased. Signing you out.');
             await signOut();
-        } catch (err: any) {
-            alert('Failed to delete account data: ' + err.message);
+        } catch (err) {
+            console.error('Failed to erase account data:', err);
+            toast.error(`Failed to erase your data: ${errorMessage(err)} — nothing else was removed.`);
             setIsDeleting(false);
         }
     };
@@ -248,10 +312,11 @@ const SettingsView: React.FC = () => {
                             <div className="form-group">
                                 <Button variant="secondary" type="button" onClick={async () => {
                                     if (window.confirm('Send a password recovery link to your email?')) {
-                                        await supabase.auth.resetPasswordForEmail(user?.email || '', {
+                                        const { error } = await supabase.auth.resetPasswordForEmail(user?.email || '', {
                                             redirectTo: `${window.location.origin}/update-password`,
                                         });
-                                        alert('Password reset link sent!');
+                                        if (error) toast.error(error.message);
+                                        else toast.success('Password reset link sent — check your inbox.');
                                     }
                                 }}>Change Password</Button>
                             </div>
@@ -296,10 +361,27 @@ const SettingsView: React.FC = () => {
                             <h4 className="text-danger mb-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <AlertTriangle size={18} /> Danger Zone
                             </h4>
-                            <p className="text-secondary mb-md">Permanently delete your account and all associated data. This action cannot be undone.</p>
-                            <Button variant="danger" onClick={handleDeleteAccount} disabled={isDeleting}>
-                                {isDeleting ? 'Deleting...' : 'Delete Account & Data'}
+
+                            <p className="text-secondary mb-md">
+                                Delete every bill, savings goal and investment in the Finance Hub.
+                                Nothing else is affected.
+                            </p>
+                            <Button variant="secondary" onClick={handleResetFinance} disabled={isResettingFinance}>
+                                <WalletCards size={16} /> {isResettingFinance ? 'Clearing...' : 'Clear Finance Hub'}
                             </Button>
+
+                            <p className="text-secondary mb-md mt-lg">
+                                Erase all of your data — tasks, goals, points, finances, books, workouts
+                                and lists. Your login and settings stay, so you can start over with a
+                                clean slate. This cannot be undone.
+                            </p>
+                            <Button variant="danger" onClick={handleEraseAllData} disabled={isDeleting}>
+                                {isDeleting ? 'Erasing...' : 'Erase All My Data'}
+                            </Button>
+                            <p className="setting-hint mt-sm">
+                                Removing the login itself needs server-side access the browser
+                                doesn't have, so it isn't available yet.
+                            </p>
                         </div>
                     </Card>
                 </section>

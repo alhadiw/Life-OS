@@ -7,6 +7,7 @@ import { Activity, Flame, Timer, Calendar, Plus, Check, Target, Trash2, Edit2 } 
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { todayISO, addDays } from '../../lib/dates';
 import './Exercise.css';
 
 type WorkoutIntensity = 'Light' | 'Moderate' | 'Intense';
@@ -42,7 +43,7 @@ const ExerciseView: React.FC = () => {
     const [showForm, setShowForm] = useState(false);
 
     // Create forms state
-    const [newWorkout, setNewWorkout] = useState({ type: '', durationMinutes: 30, date: new Date().toISOString().split('T')[0], intensity: 'Moderate' as WorkoutIntensity, notes: '' });
+    const [newWorkout, setNewWorkout] = useState({ type: '', durationMinutes: 30, date: todayISO(), intensity: 'Moderate' as WorkoutIntensity, notes: '' });
     const [newGoal, setNewGoal] = useState({ title: '', period: 'weekly' as 'weekly' | 'monthly', targetValue: 3, metric: 'sessions' as 'sessions' | 'minutes', pointsReward: 100 });
 
     // Edit state
@@ -64,7 +65,7 @@ const ExerciseView: React.FC = () => {
                 if (data) {
                     setWorkouts(data.map(w => ({
                         id: w.id, type: w.type, durationMinutes: w.duration_minutes,
-                        date: w.exercise_date, intensity: w.intensity as WorkoutIntensity, notes: w.notes
+                        date: w.exercise_date, intensity: w.intensity ?? undefined, notes: w.notes ?? undefined
                     })));
                 }
             } else {
@@ -99,11 +100,11 @@ const ExerciseView: React.FC = () => {
             if (data) {
                 setWorkouts(prev => [{
                     id: data.id, type: data.type, durationMinutes: data.duration_minutes,
-                    date: data.exercise_date, intensity: data.intensity, notes: data.notes
+                    date: data.exercise_date, intensity: data.intensity ?? undefined, notes: data.notes ?? undefined
                 }, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             }
             setShowForm(false);
-            setNewWorkout({ type: '', durationMinutes: 30, date: new Date().toISOString().split('T')[0], intensity: 'Moderate', notes: '' });
+            setNewWorkout({ type: '', durationMinutes: 30, date: todayISO(), intensity: 'Moderate', notes: '' });
         } catch (e) { console.error(e); }
     };
 
@@ -121,7 +122,8 @@ const ExerciseView: React.FC = () => {
             if (data) {
                 setGoals(prev => [{
                     id: data.id, title: data.title, period: data.period, targetValue: data.target_value,
-                    currentValue: data.current_value, metric: data.metric, completed: data.completed, pointsReward: data.points_reward
+                    currentValue: data.current_value, metric: data.metric as 'sessions' | 'minutes',
+                    completed: data.completed, pointsReward: data.points_reward
                 }, ...prev]);
             }
             setShowForm(false);
@@ -196,36 +198,27 @@ const ExerciseView: React.FC = () => {
     const calculateStreak = () => {
         if (!workouts.length) return 0;
 
-        // Get unique dates
-        const uniqueDates = Array.from(new Set(workouts.map(w => w.date))).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+        // Workout dates are stored as plain `date` values, so comparing the ISO
+        // strings directly is exact — no Date objects, no timezone to get wrong
+        // (FIX-6: this used to walk backwards using UTC days, which shifted the
+        // whole streak by one for anyone west of Greenwich late in the evening).
+        const loggedDays = new Set(workouts.map(w => w.date));
 
-        const todayDate = new Date();
-        const todayStr = todayDate.toISOString().split('T')[0];
-        const yesterdayDate = new Date(todayDate);
-        yesterdayDate.setDate(todayDate.getDate() - 1);
-        const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+        const today = todayISO();
+        const yesterday = addDays(today, -1);
+
+        // Today not being logged yet doesn't break a streak — the day isn't
+        // over. Two consecutive missed days does.
+        let cursor = loggedDays.has(today) ? today
+            : loggedDays.has(yesterday) ? yesterday
+                : null;
+
+        if (cursor === null) return 0;
 
         let streak = 0;
-        let currentDateToCheck = new Date();
-        let currentStr = currentDateToCheck.toISOString().split('T')[0];
-
-        // If no workout today or yesterday, streak is 0
-        if (!uniqueDates.includes(todayStr) && !uniqueDates.includes(yesterdayStr)) {
-            return 0;
-        }
-
-        // Start checking backwards
-        // If they worked out today, we start checking from today backwards.
-        // If they worked out yesterday but NOT today, we start checking from yesterday backwards.
-        if (!uniqueDates.includes(todayStr) && uniqueDates.includes(yesterdayStr)) {
-            currentDateToCheck = new Date(yesterdayDate);
-            currentStr = currentDateToCheck.toISOString().split('T')[0];
-        }
-
-        while (uniqueDates.includes(currentStr)) {
+        while (loggedDays.has(cursor)) {
             streak++;
-            currentDateToCheck.setDate(currentDateToCheck.getDate() - 1);
-            currentStr = currentDateToCheck.toISOString().split('T')[0];
+            cursor = addDays(cursor, -1);
         }
 
         return streak;

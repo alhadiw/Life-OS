@@ -1,0 +1,17 @@
+# This repository is public. Anything listed here is deliberately kept local.
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Working notes and planning docs — local only, not part of the product.
+CLAUDE.md
+DESIGN.md
+
+# OS / editor cruft
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea

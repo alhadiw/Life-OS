@@ -7,6 +7,7 @@ import { Plus, Check, WalletCards, PiggyBank, TrendingUp, Calendar, Trash2, Edit
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { todayISO } from '../../lib/dates';
 import './Finance.css';
 
 type FinanceTab = 'bills' | 'savings' | 'investments';
@@ -52,7 +53,7 @@ const FinanceView: React.FC = () => {
     // Create Form States
     const [newBill, setNewBill] = useState({ name: '', amount: 0, dueDate: '', category: 'General', frequency: 'monthly' });
     const [newSaving, setNewSaving] = useState({ name: '', targetAmount: 0 });
-    const [newInvestment, setNewInvestment] = useState({ platform: '', asset: '', amount: 0, date: new Date().toISOString().split('T')[0] });
+    const [newInvestment, setNewInvestment] = useState({ platform: '', asset: '', amount: 0, date: todayISO() });
 
     // Edit States
     const [editingBill, setEditingBill] = useState<Bill | null>(null);
@@ -74,7 +75,7 @@ const FinanceView: React.FC = () => {
                 if (data) {
                     setBills(data.map(b => ({
                         id: b.id, name: b.name, amount: Number(b.amount),
-                        dueDate: b.due_date, paid: b.paid, category: b.category, frequency: b.frequency
+                        dueDate: b.due_date, paid: b.paid, category: b.category || 'General', frequency: b.frequency
                     })));
                 }
             } else if (activeTab === 'savings') {
@@ -138,7 +139,7 @@ const FinanceView: React.FC = () => {
             if (data) {
                 setBills(prev => [...prev, {
                     id: data.id, name: data.name, amount: Number(data.amount), dueDate: data.due_date,
-                    paid: data.paid, category: data.category, frequency: data.frequency
+                    paid: data.paid, category: data.category || 'General', frequency: data.frequency
                 }].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()));
             }
             setShowForm(false);
@@ -181,7 +182,7 @@ const FinanceView: React.FC = () => {
                 }, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             }
             setShowForm(false);
-            setNewInvestment({ platform: '', asset: '', amount: 0, date: new Date().toISOString().split('T')[0] });
+            setNewInvestment({ platform: '', asset: '', amount: 0, date: todayISO() });
         } catch (e) { console.error(e); }
     };
 

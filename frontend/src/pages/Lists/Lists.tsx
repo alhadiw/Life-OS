@@ -116,8 +116,8 @@ const ListsView: React.FC = () => {
             if (error) throw error;
             if (data) {
                 setLists(prev => [{
-                    id: data.id, name: data.name, iconName: data.icon as UserList['iconName'],
-                    color: data.color, items: []
+                    id: data.id, name: data.name, iconName: data.icon as UserList['iconName'] || 'CheckSquare',
+                    color: data.color || defaultColors[0], items: []
                 }, ...prev]);
             }
             setShowForm(false);

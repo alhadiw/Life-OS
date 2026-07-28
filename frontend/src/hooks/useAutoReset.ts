@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { startOfWeek, startOfMonth, format } from 'date-fns';
+import { todayISO, startOfWeekISO, startOfMonthISO } from '../lib/dates';
 
 export const useAutoReset = () => {
     const { user } = useAuth();
@@ -15,10 +15,12 @@ export const useAutoReset = () => {
 
         const checkResets = async () => {
             try {
-                const today = new Date();
-                const currentDaily = format(today, 'yyyy-MM-dd');
-                const currentWeekly = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-                const currentMonthly = format(startOfMonth(today), 'yyyy-MM-dd');
+                // FIX-6 — rollover happens at midnight in the *user's* zone.
+                // (If the profile hasn't loaded yet this falls back to the
+                // browser's zone, which is what it always used before.)
+                const currentDaily = todayISO();
+                const currentWeekly = startOfWeekISO(currentDaily);
+                const currentMonthly = startOfMonthISO(currentDaily);
 
                 const metadata = user.user_metadata || {};
                 let needsUpdate = false;
@@ -45,13 +47,20 @@ export const useAutoReset = () => {
                     // Reset recurring monthly bills: un-pay them and advance their due_date to the current month
                     const { data: billsData } = await supabase.from('finance_bills').select('id, due_date').eq('frequency', 'monthly').eq('user_id', user.id);
                     if (billsData && billsData.length > 0) {
+                        const [year, month] = currentDaily.split('-').map(Number);
+                        // Day 0 of the following month is the last day of this one.
+                        const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
                         for (const bill of billsData) {
-                            // Safely extract the day to avoid UTC timezone negative offset bugs
-                            const day = parseInt(bill.due_date.split('-')[2], 10);
-                            const newDate = new Date(today.getFullYear(), today.getMonth(), day);
+                            // Keep the same day-of-month, clamped so that a bill
+                            // due on the 31st lands on the 30th in a short month
+                            // rather than rolling forward into the next one.
+                            const day = Math.min(Number(bill.due_date.slice(8, 10)), lastDayOfMonth);
+                            const newDueDate = `${currentMonthly.slice(0, 8)}${String(day).padStart(2, '0')}`;
+
                             await supabase.from('finance_bills').update({
                                 paid: false,
-                                due_date: format(newDate, 'yyyy-MM-dd')
+                                due_date: newDueDate
                             }).eq('id', bill.id);
                         }
                     }

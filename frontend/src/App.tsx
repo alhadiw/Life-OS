@@ -12,6 +12,8 @@ import DashboardView from './pages/Dashboard/Dashboard';
 import LoginView from './pages/Auth/Login';
 import UpdatePasswordView from './pages/Auth/UpdatePassword';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAutoReset } from './hooks/useAutoReset';
 
 // Placeholder Pages - To be implemented
@@ -60,11 +62,18 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <PointsProvider>
-          <AppRoutes />
-        </PointsProvider>
-      </AuthProvider>
+      {/* ErrorBoundary sits outermost so a crash anywhere still renders a
+          recoverable screen; ToastProvider sits above the data contexts so they
+          can report failures instead of swallowing them into the console. */}
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <PointsProvider>
+              <AppRoutes />
+            </PointsProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

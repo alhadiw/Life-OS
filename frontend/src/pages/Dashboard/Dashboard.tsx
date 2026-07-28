@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/Button';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useToast } from '../../contexts/ToastContext';
+import { todayISO, addDays, startOfWeekISO } from '../../lib/dates';
 import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './Dashboard.css';
@@ -11,6 +13,7 @@ import './Dashboard.css';
 const DashboardView: React.FC = () => {
     const { addPoints, removePoints, currencySymbol } = usePoints();
     const { user } = useAuth();
+    const toast = useToast();
     const [loading, setLoading] = useState(true);
 
     const [quickTaskText, setQuickTaskText] = useState('');
@@ -32,17 +35,30 @@ const DashboardView: React.FC = () => {
     }, [user]);
 
     const fetchDashboardData = async () => {
+        if (!user) return;
         setLoading(true);
         try {
-            // 1. Fetch Today's Tasks
+            const today = todayISO();
+
+            // 1. Today's tasks (FIX-7).
+            // Previously this pulled every task ever created, newest first, so
+            // the widget's top five were whatever you happened to add last —
+            // completed ones included. A task belongs to today if it has no due
+            // date (the daily-habit case, reset each morning) or is due today or
+            // earlier; anything scheduled for a future day isn't today's work.
             const { data: tasksData } = await supabase
                 .from('tasks')
                 .select('*')
+                .or(`due_date.is.null,due_date.lte.${today}`)
                 .order('created_at', { ascending: false });
 
             if (tasksData) {
-                // Filter tasks to only show uncompleted or completed today (for simplicity, we'll just show them all in the quick view like before)
-                setDailyTasks(tasksData.map(t => ({ id: t.id, title: t.title, points: t.points, completed: t.completed })));
+                setDailyTasks(
+                    tasksData
+                        .map(t => ({ id: t.id, title: t.title, points: t.points, completed: t.completed }))
+                        // What's still outstanding matters more than what's done.
+                        .sort((a, b) => Number(a.completed) - Number(b.completed))
+                );
             }
 
             // 2. Fetch Goals Summary
@@ -55,17 +71,14 @@ const DashboardView: React.FC = () => {
             }
 
             // 3. Fetch Finance Snapshot
-            // Bills: Unpaid and due within 7 days
-            const today = new Date();
-            const nextWeek = new Date();
-            nextWeek.setDate(nextWeek.getDate() + 7);
-
+            // Bills: unpaid and due within 7 days, in the user's own calendar
+            // rather than UTC (FIX-6).
             const { data: billsData } = await supabase
                 .from('finance_bills')
                 .select('amount, due_date')
                 .eq('paid', false)
-                .lte('due_date', nextWeek.toISOString().split('T')[0])
-                .gte('due_date', today.toISOString().split('T')[0]);
+                .gte('due_date', today)
+                .lte('due_date', addDays(today, 7));
 
             // Savings
             const { data: savingsData } = await supabase.from('finance_savings').select('current_amount');
@@ -87,12 +100,16 @@ const DashboardView: React.FC = () => {
                 .single();
             if (bookData) setCurrentBook(bookData);
 
-            // 5. Fetch Exercise
+            // 5. Fetch Exercise (FIX-8).
+            // This used to count `.limit(10)` of all workouts ever, so the
+            // number under "Exercise This Week" was capped at 10 and had
+            // nothing to do with this week. Now it's the real count since
+            // Monday, in the user's timezone.
             const { data: workoutsThisWeek } = await supabase
                 .from('exercises')
                 .select('id')
-                // A complete app would filter by current week, simplified here
-                .limit(10);
+                .gte('exercise_date', startOfWeekISO(today))
+                .lte('exercise_date', today);
 
             const { data: exGoals } = await supabase
                 .from('exercise_goals')
@@ -110,12 +127,13 @@ const DashboardView: React.FC = () => {
             const { data: listsData } = await supabase
                 .from('user_lists')
                 .select('id, name, icon')
-                .eq('user_id', user?.id)
+                .eq('user_id', user.id)
                 .limit(3);
             if (listsData) setUserLists(listsData);
 
         } catch (error) {
             console.error('Error fetching dashboard summary:', error);
+            toast.error("Couldn't load your dashboard. Pull up and try again.");
         } finally {
             setLoading(false);
         }
@@ -142,6 +160,7 @@ const DashboardView: React.FC = () => {
             setQuickTaskText('');
         } catch (e) {
             console.error(e);
+            toast.error("Couldn't add that task.");
         }
     };
 
@@ -165,16 +184,24 @@ const DashboardView: React.FC = () => {
 
         setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
 
+        // Persist the checkbox before awarding points, so a failed write can't
+        // leave the ledger crediting a task the database still thinks is open.
+        const { error } = await supabase
+            .from('tasks')
+            .update({ completed: newCompletedStatus })
+            .eq('id', task.id);
+
+        if (error) {
+            console.error(error);
+            setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
+            toast.error("Couldn't save that — your points are unchanged.");
+            return;
+        }
+
         if (newCompletedStatus) {
             await addPoints(task.points, `Quick completed: ${task.title}`);
         } else {
             await removePoints(task.points, `Unchecked: ${task.title}`);
-        }
-
-        try {
-            await supabase.from('tasks').update({ completed: newCompletedStatus }).eq('id', task.id);
-        } catch (e) {
-            console.error(e);
         }
     };
 
