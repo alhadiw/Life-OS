@@ -1,0 +1,109 @@
+/* Loading placeholders (PWA-5). */
+
+.skeleton {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    background-color: var(--surface-hover);
+    flex-shrink: 0;
+}
+
+/* The shimmer is a moving highlight rather than an opacity pulse: it reads as
+   "something is arriving" instead of "something is broken". */
+.skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.055),
+            transparent);
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Several pages drop a skeleton straight into an existing CSS grid
+   (.books-grid, .lists-grid, .goals-grid) where it would otherwise be squeezed
+   into a single column. Spanning every track makes these safe as a direct child
+   of any grid; the declaration is simply ignored when the parent isn't one. */
+.skeleton-list,
+.skeleton-grid,
+.skeleton-stats {
+    grid-column: 1 / -1;
+}
+
+/* Stacked rows — mirrors .task-card in Tasks.css. */
+.skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background-color: var(--surface-solid);
+}
+
+.skeleton-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Card grid — mirrors the Books / Lists / Exercise-goal layouts. */
+.skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Stat tiles across the top of Dashboard and Finance. */
+.skeleton-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+/* Route-level fallback. */
+.skeleton-page {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding-top: 1rem;
+}
+
+.skeleton-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+@media (max-width: 640px) {
+    .skeleton-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+/* A shimmer that someone has asked their OS to suppress is just a distraction.
+   The placeholder shape still does its job without it. */
+@media (prefers-reduced-motion: reduce) {
+    .skeleton::after {
+        animation: none;
+        display: none;
+    }
+}

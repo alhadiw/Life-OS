@@ -1,10 +1,11 @@
 .toast-viewport {
     position: fixed;
     z-index: 1000;
-    bottom: calc(72px + 1rem);
-    /* clears the mobile bottom nav */
-    left: 1rem;
-    right: 1rem;
+    /* Clears the mobile bottom nav, which is itself taller by the home
+       indicator inset (PWA-3). */
+    bottom: calc(72px + 1rem + env(safe-area-inset-bottom, 0px));
+    left: max(1rem, env(safe-area-inset-left, 0px));
+    right: max(1rem, env(safe-area-inset-right, 0px));
     display: flex;
     flex-direction: column-reverse;
     gap: 0.5rem;
@@ -15,8 +16,8 @@
     .toast-viewport {
         bottom: auto;
         left: auto;
-        top: calc(var(--header-height) + 1rem);
-        right: 1.5rem;
+        top: calc(var(--header-height) + 1rem + env(safe-area-inset-top, 0px));
+        right: max(1.5rem, env(safe-area-inset-right, 0px));
         width: 380px;
         max-width: calc(100vw - 3rem);
         flex-direction: column;

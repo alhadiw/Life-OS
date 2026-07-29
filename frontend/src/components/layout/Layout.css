@@ -1,18 +1,26 @@
 .app-layout {
     display: flex;
+    /* dvh tracks the viewport as mobile browser chrome slides in and out; vh is
+       the fallback for anything that doesn't understand it. */
     min-height: 100vh;
+    min-height: 100dvh;
     width: 100%;
 }
 
 .desktop-sidebar {
     width: var(--sidebar-width);
     height: 100vh;
+    height: 100dvh;
     position: fixed;
     left: 0;
     top: 0;
     display: flex;
     flex-direction: column;
     padding: 1.5rem;
+    /* Landscape on a notched device pushes the sidebar out of the cutout. */
+    padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
+    padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
     border-radius: 0;
     border-top: none;
     border-bottom: none;
@@ -78,6 +86,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .page-container {
@@ -93,7 +102,16 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 64px;
+    /* PWA-3. With viewport-fit=cover the page paints all the way to the bottom
+       edge, so the bar has to grow by the inset and pad its contents up out of
+       the iPhone home indicator — otherwise the icons sit underneath it and the
+       bottom row of tap targets is unreachable. The inset is 0px on every
+       device without one, so this costs nothing elsewhere.
+
+       box-sizing: border-box (set globally in index.css) means `height` covers
+       the padding, so the icon row keeps its original 64px of content box. */
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     z-index: 50;
     border-radius: 0;
     border-bottom: none;
@@ -102,7 +120,8 @@
     border-top: 1px solid var(--border-color);
     align-items: center;
     justify-content: flex-start;
-    padding: 0 1rem;
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
     overflow-x: auto;
     gap: 1.5rem;
     scrollbar-width: none;
@@ -121,12 +140,15 @@
 
     .main-content {
         margin-left: 0;
-        padding-bottom: 80px;
-        /* space for mobile nav */
+        /* Space for the mobile nav, which is itself taller by the bottom inset. */
+        padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     }
 
     .page-container {
         padding: 0 1rem 2rem 1rem;
+        /* Landscape: keep content clear of the notch on whichever side it lands. */
+        padding-left: max(1rem, env(safe-area-inset-left, 0px));
+        padding-right: max(1rem, env(safe-area-inset-right, 0px));
     }
 
     .mobile-nav {

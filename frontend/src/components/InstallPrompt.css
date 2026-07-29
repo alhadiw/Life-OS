@@ -1,0 +1,130 @@
+/* PWA-10 — "Add to home screen" banner.
+ *
+ * Bottom-anchored on mobile, because on iOS it is pointing at the Share button
+ * in the Safari toolbar directly below it. Sits above the app's own bottom nav
+ * and above the home indicator (PWA-3). */
+
+.install-prompt {
+    position: fixed;
+    z-index: 1050;
+    bottom: calc(72px + 1rem + env(safe-area-inset-bottom, 0px));
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    animation: install-prompt-in 0.36s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The same mark as the app icon — it makes concrete what "add to home screen"
+   is actually going to put there. */
+.install-prompt-mark {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    box-shadow: 0 0 12px var(--primary-glow);
+    color: white;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.25rem;
+}
+
+.install-prompt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1875rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.install-prompt-body strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.install-prompt-body span {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+/* The iOS instructions inline two icons mid-sentence; keep them on the text
+   baseline rather than sitting proud of it. */
+.install-prompt-steps {
+    display: inline;
+}
+
+.install-prompt-steps svg {
+    display: inline-block;
+    vertical-align: -2px;
+    margin: 0 1px;
+    color: var(--text-primary);
+}
+
+.install-prompt-steps em {
+    font-style: normal;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.install-prompt .btn {
+    flex-shrink: 0;
+}
+
+.install-prompt-close {
+    flex-shrink: 0;
+    align-self: flex-start;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -4px 0 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.install-prompt-close:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+@keyframes install-prompt-in {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Desktop: no bottom nav to clear, and a full-width bar would be absurd. */
+@media (min-width: 768px) {
+    .install-prompt {
+        left: auto;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 420px;
+        max-width: calc(100vw - 3rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .install-prompt {
+        animation: none;
+    }
+}

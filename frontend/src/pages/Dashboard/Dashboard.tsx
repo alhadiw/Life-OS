@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { todayISO, addDays, startOfWeekISO } from '../../lib/dates';
+import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
+import { SkeletonGrid, SkeletonList, SkeletonStats } from '../../components/ui/Skeleton';
 import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './Dashboard.css';
@@ -179,7 +181,7 @@ const DashboardView: React.FC = () => {
         }
     };
 
-    const toggleTask = async (task: any) => {
+    const toggleTask = async (task: any, origin?: CelebrationOrigin) => {
         const newCompletedStatus = !task.completed;
 
         setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
@@ -199,6 +201,7 @@ const DashboardView: React.FC = () => {
         }
 
         if (newCompletedStatus) {
+            celebrate(origin); // MOT-4, after the write succeeded — see Tasks.tsx.
             await addPoints(task.points, `Quick completed: ${task.title}`);
         } else {
             await removePoints(task.points, `Unchecked: ${task.title}`);
@@ -206,7 +209,17 @@ const DashboardView: React.FC = () => {
     };
 
     if (loading) {
-        return <div className="animate-fade-in p-xl text-center text-secondary">Loading your dashboard...</div>;
+        return (
+            <div className="animate-fade-in dashboard-layout dashboard-loading">
+                <div className="dashboard-main">
+                    <SkeletonStats count={2} label="Loading your dashboard" />
+                    <SkeletonList count={4} label="Loading today's tasks" />
+                </div>
+                <div className="dashboard-sidebar">
+                    <SkeletonGrid count={2} height="180px" label="Loading summaries" />
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -277,7 +290,8 @@ const DashboardView: React.FC = () => {
                                 <div className="dashboard-task-inner">
                                     <button
                                         className={`task-checkbox ${task.completed ? 'checked' : ''}`}
-                                        onClick={() => toggleTask(task)}
+                                        onClick={e => toggleTask(task, originFromElement(e.currentTarget))}
+                                        aria-label={task.completed ? 'Mark as uncompleted' : 'Mark as completed'}
                                     >
                                         {task.completed && <Check size={14} strokeWidth={3} />}
                                     </button>

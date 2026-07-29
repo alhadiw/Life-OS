@@ -3,9 +3,12 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { SkeletonGrid, SkeletonList } from '../../components/ui/Skeleton';
+import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
 import { Activity, Flame, Timer, Calendar, Plus, Check, Target, Trash2, Edit2 } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { todayISO, addDays } from '../../lib/dates';
 import './Exercise.css';
@@ -35,6 +38,7 @@ interface ExerciseGoal {
 const ExerciseView: React.FC = () => {
     const { addPoints } = usePoints();
     const { user } = useAuth();
+    const toast = useToast();
 
     const [workouts, setWorkouts] = useState<Workout[]>([]);
     const [goals, setGoals] = useState<ExerciseGoal[]>([]);
@@ -131,17 +135,30 @@ const ExerciseView: React.FC = () => {
         } catch (e) { console.error(e); }
     };
 
-    const completeGoal = async (goal: ExerciseGoal) => {
-        if (!goal.completed) {
-            setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, completed: true, currentValue: g.targetValue } : g));
-            await addPoints(goal.pointsReward, `Exercise Goal Met: ${goal.title}`);
+    const completeGoal = async (goal: ExerciseGoal, origin?: CelebrationOrigin) => {
+        if (goal.completed) return;
 
-            try {
-                await supabase.from('exercise_goals').update({ completed: true, current_value: goal.targetValue }).eq('id', goal.id);
-            } catch (error) {
-                console.error(error);
-            }
+        setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, completed: true, currentValue: g.targetValue } : g));
+
+        // This used to award the points first and wrap the write in a try/catch
+        // — which caught nothing, because supabase-js resolves with an `error`
+        // property rather than throwing. A failed update therefore paid out
+        // silently. Same ordering as Tasks and Dashboard now: persist, verify,
+        // then reward.
+        const { error } = await supabase
+            .from('exercise_goals')
+            .update({ completed: true, current_value: goal.targetValue })
+            .eq('id', goal.id);
+
+        if (error) {
+            console.error('Error completing exercise goal:', error);
+            setGoals(prev => prev.map(g => g.id === goal.id ? goal : g));
+            toast.error("Couldn't save that — your points are unchanged.");
+            return;
         }
+
+        celebrate(origin); // MOT-4
+        await addPoints(goal.pointsReward, `Exercise Goal Met: ${goal.title}`);
     };
 
     // --- Edit Actions ---
@@ -329,7 +346,7 @@ const ExerciseView: React.FC = () => {
 
             {activeTab === 'log' && (
                 <div className="workout-list">
-                    {loading && <p className="text-secondary text-center py-lg">Loading workouts...</p>}
+                    {loading && <SkeletonList count={4} label="Loading workouts" />}
                     {!loading && workouts.map(workout => (
                         <Card key={workout.id} hoverable padding="md" className="workout-card mb-md">
                             <div className="workout-header">
@@ -373,7 +390,7 @@ const ExerciseView: React.FC = () => {
 
             {activeTab === 'goals' && (
                 <div className="goals-grid">
-                    {loading && <p className="text-secondary text-center col-span-full py-lg">Loading goals...</p>}
+                    {loading && <SkeletonGrid count={4} height="190px" label="Loading goals" />}
                     {!loading && goals.map(goal => {
                         const percent = Math.min(100, (goal.currentValue / goal.targetValue) * 100);
                         return (
@@ -408,7 +425,7 @@ const ExerciseView: React.FC = () => {
                                         <span className="text-warning font-semibold">+{goal.pointsReward} pts</span>
                                     </div>
                                     {!goal.completed && (
-                                        <Button size="sm" variant={percent >= 100 ? 'primary' : 'secondary'} onClick={() => completeGoal(goal)}>
+                                        <Button size="sm" variant={percent >= 100 ? 'primary' : 'secondary'} onClick={e => completeGoal(goal, originFromElement(e.currentTarget))}>
                                             <Check size={16} /> Mark Complete
                                         </Button>
                                     )}

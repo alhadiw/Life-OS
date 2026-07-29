@@ -15,3 +15,11 @@ DESIGN.md
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Cloud-sync conflict copies. This repo lives under ~/Desktop, which iCloud
+# syncs, and it periodically leaves byte-identical duplicates named
+# "Dashboard 2.tsx" beside the real file. They get compiled and linted like any
+# other source file, so keep them out of the tree.
+* [0-9].*
+*\ copy.*
+*\ copy\ [0-9].*

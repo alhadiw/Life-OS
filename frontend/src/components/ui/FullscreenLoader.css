@@ -1,0 +1,75 @@
+.fullscreen-loader {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    padding: 2rem;
+    background: var(--bg-color);
+}
+
+/* The same mark as the icon and the sidebar logo, so a cold launch shows
+   something recognisable rather than a bare spinner. */
+.fullscreen-loader-mark {
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    box-shadow: 0 0 24px var(--primary-glow);
+    color: white;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.75rem;
+    animation: fullscreen-loader-breathe 2s ease-in-out infinite;
+}
+
+.fullscreen-loader-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--surface-hover);
+    border-top-color: var(--primary-color);
+    border-radius: var(--radius-full);
+    animation: fullscreen-loader-spin 0.9s linear infinite;
+}
+
+.fullscreen-loader-message {
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-align: center;
+}
+
+@keyframes fullscreen-loader-spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fullscreen-loader-breathe {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.06);
+        opacity: 0.85;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fullscreen-loader-mark {
+        animation: none;
+    }
+
+    /* The spinner keeps turning — it is the only thing signalling progress —
+       but slowly enough not to be a motion trigger. */
+    .fullscreen-loader-spinner {
+        animation-duration: 2.4s;
+    }
+}

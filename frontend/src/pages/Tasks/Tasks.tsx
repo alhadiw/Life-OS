@@ -4,10 +4,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { todayISO, addDays, startOfWeekISO, endOfMonthISO } from '../../lib/dates';
+import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { SkeletonList } from '../../components/ui/Skeleton';
 import { Plus, Check, CheckSquare, Trash2, Edit2 } from 'lucide-react';
 import './Tasks.css';
 
@@ -92,7 +94,7 @@ const TasksView: React.FC = () => {
         }
     };
 
-    const toggleTaskCompletion = async (task: Task) => {
+    const toggleTaskCompletion = async (task: Task, origin?: CelebrationOrigin) => {
         const newCompletedStatus = !task.completed;
 
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
@@ -114,6 +116,10 @@ const TasksView: React.FC = () => {
         }
 
         if (newCompletedStatus) {
+            // MOT-4. Fires only after the update above came back clean, for the
+            // same reason the points do — confetti over a write that failed
+            // would be celebrating something that didn't happen.
+            celebrate(origin);
             await addPoints(task.points, `Completed ${task.tier} task: ${task.title}`);
         } else {
             await removePoints(task.points, `Unchecked ${task.tier} task: ${task.title}`);
@@ -304,14 +310,14 @@ const TasksView: React.FC = () => {
 
             <div className="task-list">
                 {loading ? (
-                    <div className="text-center py-xl text-muted">Loading {activeTab}s...</div>
+                    <SkeletonList count={5} label={`Loading ${activeTab}s`} />
                 ) : (
                     <>
                         {uncompletedTasks.map(task => (
                             <TaskCard
                                 key={task.id}
                                 task={task}
-                                onToggle={() => toggleTaskCompletion(task)}
+                                onToggle={origin => toggleTaskCompletion(task, origin)}
                                 onEdit={() => setEditingTask(task)}
                                 onDelete={() => handleDeleteTask(task)}
                             />
@@ -333,7 +339,7 @@ const TasksView: React.FC = () => {
                                     <TaskCard
                                         key={task.id}
                                         task={task}
-                                        onToggle={() => toggleTaskCompletion(task)}
+                                        onToggle={origin => toggleTaskCompletion(task, origin)}
                                         onEdit={() => setEditingTask(task)}
                                         onDelete={() => handleDeleteTask(task)}
                                         isCompleted
@@ -386,7 +392,9 @@ const TasksView: React.FC = () => {
 
 const TaskCard: React.FC<{
     task: Task,
-    onToggle: () => void,
+    // The origin is where the confetti comes from (MOT-4) — the checkbox knows
+    // its own position, and the page handler does not.
+    onToggle: (origin?: CelebrationOrigin) => void,
     onEdit: () => void,
     onDelete: () => void,
     isCompleted?: boolean
@@ -396,7 +404,7 @@ const TaskCard: React.FC<{
             <div className="task-card-inner">
                 <button
                     className={`task-checkbox ${isCompleted ? 'checked' : ''}`}
-                    onClick={onToggle}
+                    onClick={e => onToggle(originFromElement(e.currentTarget))}
                     aria-label={isCompleted ? "Mark as uncompleted" : "Mark as completed"}
                 >
                     {isCompleted && <Check size={16} strokeWidth={3} />}

@@ -3,6 +3,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { SkeletonList } from '../../components/ui/Skeleton';
 import { Plus, Check, WalletCards, PiggyBank, TrendingUp, Calendar, Trash2, Edit2 } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -353,7 +354,7 @@ const FinanceView: React.FC = () => {
             )}
 
             <div className="finance-content">
-                {loading && <p className="text-secondary text-center py-xl">Loading...</p>}
+                {loading && <SkeletonList count={5} label={`Loading ${activeTab}`} />}
 
                 {!loading && activeTab === 'bills' && (
                     <div className="finance-list">

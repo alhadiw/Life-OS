@@ -2,11 +2,18 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    height: var(--header-height);
+    /* PWA-3. `apple-mobile-web-app-status-bar-style: black-translucent` runs the
+       app under the iOS status bar — that's what stops an installed Life OS
+       looking like a web page. The trade is that this header owes the top inset
+       as padding, and has to grow by the same amount, or the clock overlaps the
+       points readout. */
+    height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1.5rem;
+    padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
     border-radius: 0;
     border-left: none;
     border-top: none;
@@ -79,7 +86,8 @@
 
 @media (max-width: 640px) {
     .global-header {
-        padding: 0 1rem;
+        padding-left: max(1rem, env(safe-area-inset-left, 0px));
+        padding-right: max(1rem, env(safe-area-inset-right, 0px));
     }
 
     .header-brand h1 {

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { Header } from './Header';
+import { PageSkeleton } from '../ui/Skeleton';
 import { LayoutDashboard, CheckSquare, Wallet, BookOpen, Activity, List, History, Settings } from 'lucide-react';
 import './Layout.css';
 
@@ -47,7 +48,13 @@ export const Layout: React.FC = () => {
             <main className="main-content">
                 <Header />
                 <div className="page-container animate-fade-in">
-                    <Outlet />
+                    {/* PWA-5: pages are lazy, so navigating to one that hasn't
+                        downloaded yet suspends. Catching that here — inside the
+                        shell — means the nav and the points header stay on
+                        screen and only the content area shows a skeleton. */}
+                    <Suspense fallback={<PageSkeleton />}>
+                        <Outlet />
+                    </Suspense>
                 </div>
             </main>
 

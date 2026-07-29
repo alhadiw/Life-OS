@@ -3,9 +3,40 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>life OS</title>
+
+  <!-- viewport-fit=cover lets the page paint into the display cutout and home
+       indicator areas. Without it iOS letterboxes the app in standalone mode;
+       with it, the layout owes the safe-area insets a padding (see PWA-3 in
+       Layout.css and Header.css). -->
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <title>Life OS</title>
+  <meta name="description"
+    content="Life OS — turn everyday habits, goals, and workouts into points you can cash in on yourself." />
+
+  <!-- Tints the browser chrome and the iOS status bar to match --bg-color. -->
+  <meta name="theme-color" content="#0B0E14" />
+  <meta name="color-scheme" content="dark" />
+
+  <!-- Icons. The manifest (injected by vite-plugin-pwa) covers Android and
+       desktop; iOS ignores the manifest entirely and reads these tags. -->
+  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+  <!-- iOS Add to Home Screen. `black-translucent` runs the app content under
+       the status bar, which is what makes it stop looking like a web page. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Life OS" />
+
+  <!-- Fonts are self-hosted (PWA-6). Preloading them here starts the download
+       alongside the CSS instead of after it — the browser would otherwise only
+       discover them once it had parsed the stylesheet. Only the `latin` subsets
+       are preloaded; `latin-ext` stays lazy behind its unicode-range. -->
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/outfit-latin.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 
 <body>

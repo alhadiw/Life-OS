@@ -4,13 +4,16 @@
     left: 0;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
     z-index: 1000;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: var(--spacing-md);
+    /* PWA-3: the overlay covers the full screen including the cutout and home
+       indicator, so the dialog inside it has to be inset by both. */
+    padding: calc(var(--spacing-md) + env(safe-area-inset-top, 0px)) calc(var(--spacing-md) + env(safe-area-inset-right, 0px)) calc(var(--spacing-md) + env(safe-area-inset-bottom, 0px)) calc(var(--spacing-md) + env(safe-area-inset-left, 0px));
 }
 
 .modal-content {
@@ -20,7 +23,11 @@
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
+    max-height: 90dvh;
     overflow-y: auto;
+    /* Momentum scrolling inside the dialog rather than rubber-banding the page
+       behind it. */
+    -webkit-overflow-scrolling: touch;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 10px 15px -3px rgba(0, 0, 0, 0.3);
 }
 

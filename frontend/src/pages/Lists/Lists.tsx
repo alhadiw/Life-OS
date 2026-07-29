@@ -3,6 +3,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
+import { SkeletonGrid } from '../../components/ui/Skeleton';
 import { ShoppingCart, Film, Plane, Book, CheckSquare, Plus, Check, ChevronLeft, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -388,7 +389,7 @@ const ListsView: React.FC = () => {
             )}
 
             <div className="lists-grid">
-                {loading && <p className="text-secondary col-span-full text-center py-lg">Loading lists...</p>}
+                {loading && <SkeletonGrid count={6} height="170px" label="Loading lists" />}
 
                 {!loading && lists.map(list => {
                     const Icon = IconMap[list.iconName] || CheckSquare;

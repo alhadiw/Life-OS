@@ -120,7 +120,12 @@
     gap: 1rem;
 }
 
+/* MOT-4 — the most-repeated interaction in the app, so it earns some care.
+   Three layers: the box itself pops, a ring expands out of it, and the tick
+   draws itself in. Confetti (lib/celebrate.ts) fires on top once the write to
+   the database has actually come back clean. */
 .task-checkbox {
+    position: relative;
     width: 24px;
     height: 24px;
     border-radius: 6px;
@@ -133,6 +138,8 @@
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     color: white;
     flex-shrink: 0;
+    /* Stops iOS flashing its grey tap highlight over the animation. */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .task-checkbox:hover {
@@ -140,23 +147,94 @@
     background: rgba(99, 102, 241, 0.1);
 }
 
+/* Presses in under the finger. Real buttons move. */
+.task-checkbox:active {
+    transform: scale(0.88);
+}
+
+.task-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
 .task-checkbox.checked {
     background: var(--success-color);
     border-color: var(--success-color);
-    animation: check-bounce 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: check-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The ring: a copy of the box that scales out and fades, so the completion
+   reads as radiating rather than just changing colour. */
+.task-checkbox.checked::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 8px;
+    border: 2px solid var(--success-color);
+    animation: check-ring 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+}
+
+/* Draw the tick on rather than popping it in. */
+.task-checkbox.checked svg {
+    animation: check-draw 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s backwards;
 }
 
 @keyframes check-bounce {
     0% {
-        transform: scale(1);
+        transform: scale(0.8);
     }
 
-    50% {
-        transform: scale(1.2);
+    55% {
+        transform: scale(1.22);
     }
 
     100% {
         transform: scale(1);
+    }
+}
+
+@keyframes check-ring {
+    0% {
+        opacity: 0.85;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(2.1);
+    }
+}
+
+@keyframes check-draw {
+    0% {
+        opacity: 0;
+        transform: scale(0.3) rotate(-25deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0);
+    }
+}
+
+/* Reduced motion keeps the state change — colour and tick — and drops
+   everything that moves. The interaction still reads as completed. */
+@media (prefers-reduced-motion: reduce) {
+
+    .task-checkbox,
+    .task-checkbox.checked,
+    .task-checkbox.checked svg {
+        animation: none;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .task-checkbox:active {
+        transform: none;
+    }
+
+    .task-checkbox.checked::before {
+        display: none;
     }
 }
 

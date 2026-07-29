@@ -1,0 +1,111 @@
+/* PWA-2 — the "new version ready" / "ready offline" banner.
+ *
+ * Sits above the toast viewport (z 1000) because it is the one message that
+ * explains why everything else might be behaving oddly. Anchored to the top on
+ * mobile so it never fights the bottom nav for space. */
+
+.update-prompt-viewport {
+    position: fixed;
+    z-index: 1100;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.update-prompt {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    width: 100%;
+    max-width: 480px;
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--primary-color);
+    background: var(--surface-solid);
+    pointer-events: auto;
+    animation: update-prompt-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.update-prompt-quiet {
+    border-left-color: var(--success-color);
+}
+
+.update-prompt-icon {
+    flex-shrink: 0;
+    color: var(--primary-color);
+}
+
+.update-prompt-quiet .update-prompt-icon {
+    color: var(--success-color);
+}
+
+.update-prompt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.update-prompt-body strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.update-prompt-body span {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.update-prompt-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.update-prompt-close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.update-prompt-close:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+@keyframes update-prompt-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 480px) {
+
+    /* The secondary line is nice-to-have; the headline and the button are not. */
+    .update-prompt-body span {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .update-prompt {
+        animation: none;
+    }
+}

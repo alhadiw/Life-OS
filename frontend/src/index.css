@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap');
+@import './fonts.css';
 @import './components.css';
 
 :root {
@@ -32,11 +32,28 @@
   --font-body: 'Inter', system-ui, sans-serif;
   --font-heading: 'Outfit', system-ui, sans-serif;
 
+  /* Spacing scale.
+     Modal.css has always referenced these, but they were never defined, so
+     `padding: var(--spacing-lg)` resolved to invalid and fell back to 0 — every
+     modal in the app rendered edge-to-edge with no padding. Same story for
+     --surface-bg (transparent background) and --radius-xl (square corners).
+     Values chosen to line up with the existing .p-sm / .p-md / .p-lg utilities
+     in components.css. */
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 0.75rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
   /* Borders & Shadows */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
+
+  /* Alias kept because Modal.css asks for it by this name. */
+  --surface-bg: #161C24;
 
   --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-glow: 0 0 20px var(--primary-glow);

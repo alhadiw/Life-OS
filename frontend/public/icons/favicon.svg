@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Life OS">
+  <title>Life OS</title>
+  <!-- Vector twin of public/icons/icon-512.png. Same geometry, same tokens:
+       --primary-color to --primary-hover on a 135-degree axis. Browsers that
+       support SVG favicons get this and stay crisp at any size; the rest fall
+       back to apple-touch-icon.png. -->
+  <defs>
+    <linearGradient id="lifeos-mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="115.2" fill="url(#lifeos-mark)"/>
+  <g fill="#FFFFFF">
+    <rect x="185.34" y="133.12" width="58.88" height="235.52" rx="9.42"/>
+    <rect x="185.34" y="309.76" width="153.60" height="58.88" rx="9.42"/>
+  </g>
+</svg>
