@@ -122,10 +122,11 @@
     justify-content: flex-start;
     padding-left: max(1rem, env(safe-area-inset-left, 0px));
     padding-right: max(1rem, env(safe-area-inset-right, 0px));
-    overflow-x: auto;
-    gap: 1.5rem;
-    scrollbar-width: none;
-    /* Firefox */
+    /* Five equal slots, no scrolling. The bar used to list all nine routes with
+       overflow-x: auto, which pushed Points History and Settings off-screen on a
+       phone with nothing to indicate they were there. */
+    justify-content: space-around;
+    gap: 0;
 }
 
 .mobile-nav::-webkit-scrollbar {
@@ -156,14 +157,109 @@
     }
 
     .mobile-nav .nav-link {
-        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.125rem;
+        flex: 1;
+        /* 44px is the minimum comfortable tap target. */
+        min-height: 44px;
+        padding: 0.25rem;
         border-radius: var(--radius-sm);
-        flex-shrink: 0;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+    }
+
+    .nav-caption {
+        font-size: 0.625rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
     }
 
     .mobile-nav .nav-link.active {
         box-shadow: none;
         background-color: transparent;
         color: var(--primary-color);
+    }
+}
+/* --- Mobile overflow sheet --- */
+.mobile-more-overlay,
+.mobile-more-sheet {
+    display: none;
+}
+
+@media (max-width: 768px) {
+
+    .mobile-more-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 55;
+        animation: more-fade 0.15s ease;
+    }
+
+    .mobile-more-sheet {
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        left: max(0.75rem, env(safe-area-inset-left, 0px));
+        right: max(0.75rem, env(safe-area-inset-right, 0px));
+        /* Sits directly above the bar, including its safe-area growth. */
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 0.5rem);
+        z-index: 60;
+        padding: 0.5rem;
+        border-radius: var(--radius-lg);
+        animation: more-rise 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .mobile-more-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.25rem 0.5rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+    }
+
+    .mobile-more-link {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 44px;
+        padding: 0 0.75rem;
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.9375rem;
+    }
+
+    .mobile-more-link.active {
+        color: var(--primary-color);
+        background: rgba(99, 102, 241, 0.1);
+    }
+}
+
+@keyframes more-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes more-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .mobile-more-overlay,
+    .mobile-more-sheet {
+        animation: none;
     }
 }

@@ -4,11 +4,12 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { SkeletonGrid } from '../../components/ui/Skeleton';
-import { ShoppingCart, Film, Plane, Book, CheckSquare, Plus, Check, ChevronLeft, Trash2, Edit2 } from 'lucide-react';
+import { CheckSquare, Plus, Check, ChevronLeft, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
+import { listIcon, type ListIconName } from '../../lib/listIcons';
 import './Lists.css';
 
 interface ListItem {
@@ -20,18 +21,12 @@ interface ListItem {
 interface UserList {
     id: string;
     name: string;
-    iconName: 'ShoppingCart' | 'Film' | 'Plane' | 'Book' | 'CheckSquare';
+    iconName: ListIconName;
     color: string;
     items: ListItem[];
 }
 
-const IconMap = {
-    ShoppingCart,
-    Film,
-    Plane,
-    Book,
-    CheckSquare
-};
+
 
 const defaultColors = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#EC4899'];
 
@@ -214,7 +209,7 @@ const ListsView: React.FC = () => {
     const activeList = lists.find(l => l.id === activeListId);
 
     if (activeList) {
-        const Icon = IconMap[activeList.iconName];
+        const Icon = listIcon(activeList.iconName);
         const completedCount = activeList.items.filter(i => i.checked).length;
         const totalCount = activeList.items.length;
 
@@ -353,7 +348,7 @@ const ListsView: React.FC = () => {
                 {loading && <SkeletonGrid count={6} height="170px" label="Loading lists" />}
 
                 {!loading && lists.map(list => {
-                    const Icon = IconMap[list.iconName] || CheckSquare;
+                    const Icon = listIcon(list.iconName);
                     const total = list.items.length;
                     const completed = list.items.filter(i => i.checked).length;
                     const percent = total > 0 ? (completed / total) * 100 : 0;

@@ -1,32 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { usePoints } from '../../contexts/PointsContext';
 import { Link } from 'react-router';
-import { Award, Coins, Wallet } from 'lucide-react';
+import { Coins } from 'lucide-react';
 import './Header.css';
 
+/**
+ * The points header.
+ *
+ * It used to show four numbers — lifetime points, unspent points, current value
+ * and lifetime earned — separated only by small coloured icons, with their
+ * meanings in `title` tooltips. Tooltips do not exist on touch, and this is a
+ * PWA whose primary target is a phone, so in practice it was four unlabelled
+ * figures. Worse on the default 1:1 conversion rate, where lifetime points and
+ * lifetime earned render as the same number twice.
+ *
+ * Now it answers the one question a header should: what can I spend right now,
+ * and what is that worth. Lifetime totals live on /history, which is where you
+ * go to look at them, and which already shows both.
+ *
+ * FIX-10 is gone with the state that caused it. The pulse used to be a
+ * `useState` flag set from an effect that compared against a `prevPoints` value
+ * only updated in the non-animating branch, so it went stale after a gain and
+ * could mis-fire. Keying the element on the balance makes React remount it
+ * whenever the number changes, which replays the CSS animation — no state, no
+ * effect, nothing to go stale. It now pulses on spends too; a balance changing
+ * is worth acknowledging in either direction.
+ */
 export const Header: React.FC = () => {
-    const {
-        unspentPoints,
-        lifetimePoints,
-        conversionRate,
-        currencySymbol,
-        totalMoneyEarned
-    } = usePoints();
-
-    const [animatePoints, setAnimatePoints] = useState(false);
-    const [prevPoints, setPrevPoints] = useState(unspentPoints);
-
-    useEffect(() => {
-        if (unspentPoints > prevPoints) {
-            setAnimatePoints(true);
-            const timer = setTimeout(() => setAnimatePoints(false), 800);
-            return () => clearTimeout(timer);
-        }
-        setPrevPoints(unspentPoints);
-    }, [unspentPoints, prevPoints]);
+    const { unspentPoints, conversionRate, currencySymbol } = usePoints();
 
     const currentMoney = (unspentPoints / conversionRate).toFixed(2);
-    const maxMoney = totalMoneyEarned.toFixed(2);
 
     return (
         <header className="global-header glass-panel">
@@ -37,37 +40,28 @@ export const Header: React.FC = () => {
                 </Link>
             </div>
 
-            <div className="header-stats">
-                <div className="stat-item tooltip" title="Lifetime Points">
-                    <Award size={20} style={{ color: 'var(--primary-color)' }} />
-                    <span className="stat-value">{lifetimePoints.toLocaleString()}</span>
+            <Link to="/history" className="header-stats" aria-label="Points balance — open history">
+                <div className="stat-item">
+                    <Coins size={18} style={{ color: 'var(--warning-color)' }} aria-hidden="true" />
+                    <div className="stat-pair">
+                        <span className="stat-label">Balance</span>
+                        <span key={unspentPoints} className="stat-value animate-pulse-points">
+                            {unspentPoints.toLocaleString()}
+                        </span>
+                    </div>
                 </div>
 
-                <div className="stat-separator"></div>
+                <div className="stat-separator" />
 
-                <div className="stat-item tooltip" title="Unspent Points">
-                    <Coins size={20} style={{ color: 'var(--warning-color)' }} />
-                    <span className={`stat-value ${animatePoints ? 'animate-pulse-points' : ''}`} style={{ fontWeight: 700 }}>
-                        {unspentPoints.toLocaleString()}
-                    </span>
+                <div className="stat-item">
+                    <div className="stat-pair">
+                        <span className="stat-label">Worth</span>
+                        <span key={currentMoney} className="stat-value stat-money animate-pulse-points">
+                            {currencySymbol}{currentMoney}
+                        </span>
+                    </div>
                 </div>
-
-                <div className="stat-separator"></div>
-
-                <div className="stat-item stat-money tooltip" title="Current Value">
-                    <Wallet size={20} style={{ color: 'var(--success-color)' }} />
-                    <span className="stat-value" style={{ color: 'var(--success-color)', fontWeight: 700 }}>
-                        {currencySymbol}{currentMoney}
-                    </span>
-                </div>
-
-                <div className="stat-separator hidden-mobile"></div>
-
-                <div className="stat-item hidden-mobile tooltip" title="Lifetime Earned">
-                    <span className="stat-label">Total Earned:</span>
-                    <span className="stat-value">{currencySymbol}{maxMoney}</span>
-                </div>
-            </div>
+            </Link>
         </header>
     );
 };

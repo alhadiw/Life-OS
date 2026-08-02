@@ -11,6 +11,7 @@ import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/
 import { SkeletonGrid, SkeletonList, SkeletonStats } from '../../components/ui/Skeleton';
 import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
 import { Link } from 'react-router';
+import { listIcon } from '../../lib/listIcons';
 import './Dashboard.css';
 
 /** The subset of a task this widget needs; the full row lives on /tasks. */
@@ -362,7 +363,14 @@ const DashboardView: React.FC = () => {
                             <div className="lists-mini-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 {userLists.map(list => (
                                     <div key={list.id} className="list-mini-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-hover)', padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}>
-                                        {list.icon && <span>{list.icon}</span>}
+                                        {/* `user_lists.icon` stores the icon's NAME. This used to
+                                            render the string itself, so the widget read
+                                            "CheckSquare Things I want to buy". */}
+                                        {React.createElement(listIcon(list.icon), {
+                                            size: 16,
+                                            className: 'text-secondary',
+                                            style: { flexShrink: 0 }
+                                        })}
                                         <span className="font-medium text-sm">{list.name}</span>
                                     </div>
                                 ))}
