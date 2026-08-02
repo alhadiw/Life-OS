@@ -9,7 +9,7 @@ import { todayISO, addDays, startOfWeekISO } from '../../lib/dates';
 import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
 import { SkeletonGrid, SkeletonList, SkeletonStats } from '../../components/ui/Skeleton';
 import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import './Dashboard.css';
 
 const DashboardView: React.FC = () => {

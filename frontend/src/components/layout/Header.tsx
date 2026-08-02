@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePoints } from '../../contexts/PointsContext';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Award, Coins, Wallet } from 'lucide-react';
 import './Header.css';
 
