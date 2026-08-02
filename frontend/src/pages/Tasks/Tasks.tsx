@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import { useToast } from '../../contexts/ToastContext';
 import { todayISO, addDays, startOfWeekISO, startOfMonthISO, endOfMonthISO } from '../../lib/dates';
 import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
@@ -43,109 +44,82 @@ const TasksView: React.FC = () => {
     const { user } = useAuth();
     const toast = useToast();
 
-    const [tasks, setTasks] = useState<Task[]>([]);
     const [activeTab, setActiveTab] = useState<TaskTier>('daily');
-    const [loading, setLoading] = useState(true);
 
     const [showForm, setShowForm] = useState(false);
     const [newTask, setNewTask] = useState({ title: '', points: 50, category: 'Personal', dueDate: '' });
 
     // TSK-3 — quick capture. One field, always on screen, no decisions.
     const [capture, setCapture] = useState('');
-    const [inbox, setInbox] = useState<Task[]>([]);
 
     // Edit state
     const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-    useEffect(() => {
-        if (user) {
-            fetchTasks(activeTab);
-            fetchInbox();
+    const today = todayISO();
+
+    // ARCH-3 — one cached query per tier, keyed on the period so it re-reads
+    // when the day (or week, or month) turns over. `tasks.completed` is still in
+    // the table (DESIGN.md §11 keeps it a release) but is no longer read — it is
+    // the column that used to be wiped nightly.
+    const tasksQ = useQuery<Task[]>(
+        user ? `tasks:${activeTab}:${periodKeyFor(activeTab, today)}` : null,
+        async () => {
+            if (activeTab === 'daily') {
+                const [rows, comps] = await Promise.all([
+                    fromSupabase(supabase.from('tasks').select('*').eq('inbox', false)
+                        .order('created_at', { ascending: false })),
+                    fromSupabase(supabase.from('task_completions').select('task_id')
+                        .eq('local_date', today))
+                ]);
+                const done = new Set(comps.map(c => c.task_id));
+                return rows.map(t => ({
+                    id: t.id, title: t.title, points: t.points,
+                    category: t.category || 'General', tier: 'daily' as TaskTier,
+                    completed: done.has(t.id), dueDate: t.due_date ?? undefined
+                }));
+            }
+
+            const periodStart = periodKeyFor(activeTab, today);
+            const [rows, comps] = await Promise.all([
+                fromSupabase(supabase.from('goals').select('*').eq('period', activeTab)
+                    .order('created_at', { ascending: false })),
+                fromSupabase(supabase.from('goal_completions').select('goal_id')
+                    .eq('period_start', periodStart))
+            ]);
+            const done = new Set(comps.map(c => c.goal_id));
+            return rows.map(g => ({
+                id: g.id, title: g.title, points: g.points,
+                category: g.category || 'General', tier: g.period as TaskTier,
+                completed: done.has(g.id), dueDate: g.target_date
+            }));
         }
-    }, [user, activeTab]);
+    );
 
     /** TSK-3 — untriaged captures, independent of the active tab. */
-    const fetchInbox = async () => {
-        const { data, error } = await supabase
-            .from('tasks').select('*').eq('inbox', true)
-            .order('created_at', { ascending: false });
-        if (error) return;
-        setInbox((data ?? []).map(t => ({
+    const inboxQ = useQuery<Task[]>(user ? 'tasks:inbox' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('tasks').select('*').eq('inbox', true)
+                .order('created_at', { ascending: false })
+        );
+        return rows.map(t => ({
             id: t.id, title: t.title, points: t.points,
             category: t.category || 'General', tier: 'daily' as TaskTier,
             completed: false, dueDate: t.due_date ?? undefined
-        })));
-    };
+        }));
+    });
 
-    const fetchTasks = async (tier: TaskTier) => {
-        setLoading(true);
-        try {
-            const today = todayISO();
-
-            if (tier === 'daily') {
-                // Two reads instead of one: the tasks, and which of them have a
-                // completion row for today. `tasks.completed` is still in the
-                // table (DESIGN.md §11 keeps it for a release) but is no longer
-                // read — it is the column that used to be wiped nightly.
-                const [{ data, error }, { data: comps, error: compError }] = await Promise.all([
-                    supabase.from('tasks').select('*').eq('inbox', false)
-                        .order('created_at', { ascending: false }),
-                    supabase.from('task_completions').select('task_id').eq('local_date', today)
-                ]);
-
-                if (error) throw error;
-                if (compError) throw compError;
-
-                const done = new Set((comps ?? []).map(c => c.task_id));
-                if (data) {
-                    setTasks(data.map(t => ({
-                        id: t.id,
-                        title: t.title,
-                        points: t.points,
-                        category: t.category || 'General',
-                        tier: 'daily',
-                        completed: done.has(t.id),
-                        dueDate: t.due_date ?? undefined
-                    })));
-                }
-            } else {
-                const periodStart = periodKeyFor(tier, today);
-                const [{ data, error }, { data: comps, error: compError }] = await Promise.all([
-                    supabase.from('goals').select('*').eq('period', tier)
-                        .order('created_at', { ascending: false }),
-                    supabase.from('goal_completions').select('goal_id').eq('period_start', periodStart)
-                ]);
-
-                if (error) throw error;
-                if (compError) throw compError;
-
-                const done = new Set((comps ?? []).map(c => c.goal_id));
-                if (data) {
-                    setTasks(data.map(g => ({
-                        id: g.id,
-                        title: g.title,
-                        points: g.points,
-                        category: g.category || 'General',
-                        tier: g.period as TaskTier,
-                        completed: done.has(g.id),
-                        dueDate: g.target_date
-                    })));
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching tasks:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const tasks = tasksQ.data ?? [];
+    const inbox = inboxQ.data ?? [];
+    const loading = tasksQ.loading;
 
     const toggleTaskCompletion = async (task: Task, origin?: CelebrationOrigin) => {
         if (!user) return;
         const newCompletedStatus = !task.completed;
-        const today = todayISO();
         const periodStart = periodKeyFor(task.tier, today);
+        const key = `tasks:${task.tier}:${periodStart}`;
 
-        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
+        setQueryData<Task[]>(key, prev =>
+            (prev ?? []).map(t => (t.id === task.id ? { ...t, completed: newCompletedStatus } : t)));
 
         // ARCH-1 — completing writes a row, un-completing deletes it. There is no
         // boolean to flip and nothing to reset later, so the record of *when*
@@ -166,10 +140,16 @@ const TasksView: React.FC = () => {
 
         if (error) {
             console.error('Error updating task completion:', error);
-            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
+            invalidate('tasks');
             toast.error("Couldn't save that — your points are unchanged.");
             return;
         }
+
+        // The Dashboard shows the same tasks; without this its copy stays stale
+        // until you navigate away and back. That cross-page staleness is the
+        // whole reason ARCH-3 exists.
+        invalidate('tasks');
+        invalidate('dashboard');
 
         if (newCompletedStatus) {
             // MOT-4. Fires only after the write above came back clean, for the
@@ -188,7 +168,7 @@ const TasksView: React.FC = () => {
 
         try {
             if (activeTab === 'daily') {
-                const { data, error } = await supabase.from('tasks').insert({
+                const { error } = await supabase.from('tasks').insert({
                     user_id: user.id,
                     title: newTask.title,
                     points: newTask.points,
@@ -196,17 +176,11 @@ const TasksView: React.FC = () => {
                     // TSK-4 — the column existed since day one and was never
                     // written, which is what left FIX-7's dashboard filter inert.
                     due_date: newTask.dueDate || null
-                }).select().single();
+                });
 
                 if (error) throw error;
-                if (data) {
-                    const task: Task = {
-                        id: data.id, title: data.title, points: data.points,
-                        category: data.category || 'General', tier: 'daily', completed: false,
-                        dueDate: data.due_date ?? undefined
-                    };
-                    setTasks(prev => [task, ...prev]);
-                }
+                invalidate('tasks');
+                invalidate('dashboard');
             } else {
                 // A weekly goal is due at the end of this week, a monthly one at
                 // the end of this month — in the user's calendar (FIX-6). The
@@ -217,19 +191,14 @@ const TasksView: React.FC = () => {
                     ? addDays(startOfWeekISO(today), 6)
                     : endOfMonthISO(today);
 
-                const { data, error } = await supabase.from('goals').insert({
+                const { error } = await supabase.from('goals').insert({
                     user_id: user.id, title: newTask.title, points: newTask.points,
                     category: newTask.category, period: activeTab, target_date: targetDate
-                }).select().single();
+                });
 
                 if (error) throw error;
-                if (data) {
-                    const goal: Task = {
-                        id: data.id, title: data.title, points: data.points,
-                        category: data.category || 'General', tier: data.period as TaskTier, completed: false
-                    };
-                    setTasks(prev => [goal, ...prev]);
-                }
+                invalidate('tasks');
+                invalidate('dashboard');
             }
 
             setNewTask({ title: '', points: activeTab === 'daily' ? 25 : activeTab === 'weekly' ? 200 : 1000, category: 'Personal', dueDate: '' });
@@ -257,8 +226,7 @@ const TasksView: React.FC = () => {
                     category: editingTask.category
                 }).eq('id', editingTask.id);
             }
-
-            setTasks(prev => prev.map(t => t.id === editingTask.id ? editingTask : t));
+            invalidate('tasks'); invalidate('dashboard');
             setEditingTask(null);
         } catch (error) {
             console.error('Error updating task:', error);
@@ -274,8 +242,7 @@ const TasksView: React.FC = () => {
             } else {
                 await supabase.from('goals').delete().eq('id', task.id);
             }
-
-            setTasks(prev => prev.filter(t => t.id !== task.id));
+            invalidate('tasks'); invalidate('dashboard');
         } catch (error) {
             console.error('Error deleting task:', error);
         }
@@ -303,21 +270,21 @@ const TasksView: React.FC = () => {
             setCapture(title);
             return;
         }
-        fetchInbox();
+        invalidate('tasks');
     };
 
     const triageItem = async (item: Task) => {
         const { error } = await supabase.from('tasks').update({ inbox: false }).eq('id', item.id);
         if (error) return toast.error("Couldn't move that out of the inbox.");
-        setInbox(prev => prev.filter(i => i.id !== item.id));
-        if (activeTab === 'daily') fetchTasks('daily');
+        invalidate('tasks');
+        invalidate('tasks'); invalidate('dashboard');
         toast.success(`"${item.title}" moved to Daily Tasks.`);
     };
 
     const discardItem = async (item: Task) => {
         const { error } = await supabase.from('tasks').delete().eq('id', item.id);
         if (error) return toast.error("Couldn't delete that.");
-        setInbox(prev => prev.filter(i => i.id !== item.id));
+        invalidate('tasks');
     };
 
     const handleTabChange = (tier: TaskTier) => {

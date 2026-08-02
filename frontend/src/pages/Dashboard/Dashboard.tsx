@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import { useToast } from '../../contexts/ToastContext';
 import { todayISO, addDays, startOfWeekISO, startOfMonthISO } from '../../lib/dates';
 import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
@@ -12,150 +13,106 @@ import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide
 import { Link } from 'react-router';
 import './Dashboard.css';
 
+/** The subset of a task this widget needs; the full row lives on /tasks. */
+interface DashboardTask {
+    id: string;
+    title: string;
+    points: number;
+    completed: boolean;
+}
+
 const DashboardView: React.FC = () => {
     const { addPoints, removePoints, currencySymbol } = usePoints();
     const { user } = useAuth();
     const toast = useToast();
-    const [loading, setLoading] = useState(true);
 
     const [quickTaskText, setQuickTaskText] = useState('');
     const [rewardText, setRewardText] = useState('');
     const [rewardPoints, setRewardPoints] = useState<number | ''>('');
     const [rewardSuccess, setRewardSuccess] = useState(false);
-    const [dailyTasks, setDailyTasks] = useState<any[]>([]);
 
-    // Aggregated state
-    const [weeklyGoals, setWeeklyGoals] = useState({ completed: 0, total: 0 });
-    const [monthlyGoals, setMonthlyGoals] = useState({ completed: 0, total: 0 });
-    const [finance, setFinance] = useState({ upcomingBills: 0, savings: 0, investments: 0 });
-    const [currentBook, setCurrentBook] = useState<any>(null);
-    const [exerciseWeek, setExerciseWeek] = useState({ sessions: 0, target: 0 });
-    const [userLists, setUserLists] = useState<any[]>([]);
+    const today = todayISO();
 
-    useEffect(() => {
-        if (user) fetchDashboardData();
-    }, [user]);
+    /**
+     * ARCH-3 — the Dashboard is one view, so it is one cached query. Mutations
+     * elsewhere call `invalidate('dashboard')`, which is what finally makes
+     * completing a task on /tasks correct the widget here without a navigation.
+     */
+    const dash = useQuery(user ? `dashboard:${today}` : null, async () => {
+        const period = startOfMonthISO(today);
 
-    const fetchDashboardData = async () => {
-        if (!user) return;
-        setLoading(true);
-        try {
-            const today = todayISO();
-
-            // 1. Today's tasks (FIX-7).
-            // Previously this pulled every task ever created, newest first, so
-            // the widget's top five were whatever you happened to add last —
-            // completed ones included. A task belongs to today if it has no due
-            // date (the daily-habit case, reset each morning) or is due today or
-            // earlier; anything scheduled for a future day isn't today's work.
-            // Inbox captures (TSK-3) are deliberately excluded — they are
-            // untriaged notes, not today's commitments.
-            const [{ data: tasksData }, { data: taskComps }] = await Promise.all([
-                supabase
-                    .from('tasks')
-                    .select('*')
-                    .eq('inbox', false)
+        const [tasksData, taskComps, goalsData, goalComps, billsData, paidThisMonth,
+            savingsData, invData, workoutsThisWeek, listsData] = await Promise.all([
+                // 1. Today's tasks (FIX-7). A task belongs to today if it has no
+                // due date or is due today or earlier. Inbox captures (TSK-3) are
+                // excluded — untriaged notes are not today's commitments.
+                fromSupabase(supabase.from('tasks').select('*').eq('inbox', false)
                     .or(`due_date.is.null,due_date.lte.${today}`)
-                    .order('created_at', { ascending: false }),
-                supabase.from('task_completions').select('task_id').eq('local_date', today)
+                    .order('created_at', { ascending: false })),
+                fromSupabase(supabase.from('task_completions').select('task_id')
+                    .eq('local_date', today)),
+                // 2. Goals — complete when a row exists for the current period.
+                fromSupabase(supabase.from('goals').select('id, period')),
+                fromSupabase(supabase.from('goal_completions').select('goal_id, period_start')
+                    .in('period_start', [startOfWeekISO(today), startOfMonthISO(today)])),
+                // 3. Finance. Bills due within 7 days...
+                fromSupabase(supabase.from('finance_bills').select('id, amount, due_date')
+                    .gte('due_date', today).lte('due_date', addDays(today, 7))),
+                // ...minus the ones already paid this month. This used to filter
+                // on `finance_bills.paid`, which ARCH-1 made vestigial — nothing
+                // writes it any more, so the total was reading a stale column.
+                fromSupabase(supabase.from('bill_payments').select('bill_id')
+                    .eq('period_month', period)),
+                fromSupabase(supabase.from('finance_savings').select('current_amount')),
+                fromSupabase(supabase.from('finance_investments').select('amount')),
+                // 5. Exercise (FIX-8) — the real count since Monday.
+                fromSupabase(supabase.from('exercises').select('id')
+                    .gte('exercise_date', startOfWeekISO(today)).lte('exercise_date', today)),
+                // 6. Lists
+                fromSupabase(supabase.from('user_lists').select('id, name, icon').limit(3))
             ]);
 
-            const doneToday = new Set((taskComps ?? []).map(c => c.task_id));
+        // These two legitimately return no row for a new account, so they are
+        // fetched separately rather than letting a PGRST116 reject the batch.
+        const { data: bookData } = await supabase.from('books')
+            .select('title, author, cover_image').eq('status', 'reading').limit(1).maybeSingle();
+        const { data: exGoal } = await supabase.from('exercise_goals')
+            .select('target_value').eq('period', 'weekly').limit(1).maybeSingle();
 
-            if (tasksData) {
-                setDailyTasks(
-                    tasksData
-                        .map(t => ({ id: t.id, title: t.title, points: t.points, completed: doneToday.has(t.id) }))
-                        // What's still outstanding matters more than what's done.
-                        .sort((a, b) => Number(a.completed) - Number(b.completed))
-                );
-            }
+        const doneToday = new Set(taskComps.map(c => c.task_id));
+        const doneGoals = new Set(goalComps.map(c => c.goal_id));
+        const paid = new Set(paidThisMonth.map(p => p.bill_id));
+        const weekly = goalsData.filter(g => g.period === 'weekly');
+        const monthly = goalsData.filter(g => g.period === 'monthly');
 
-            // 2. Fetch Goals Summary
-            // ARCH-1 — a goal is complete when a row exists for the current
-            // period, not when a boolean that gets wiped weekly says so.
-            const [{ data: goalsData }, { data: goalComps }] = await Promise.all([
-                supabase.from('goals').select('id, period'),
-                supabase.from('goal_completions')
-                    .select('goal_id, period_start')
-                    .in('period_start', [startOfWeekISO(today), startOfMonthISO(today)])
-            ]);
-            const doneGoals = new Set((goalComps ?? []).map(c => c.goal_id));
-            if (goalsData) {
-                const weekly = goalsData.filter(g => g.period === 'weekly');
-                const monthly = goalsData.filter(g => g.period === 'monthly');
-                setWeeklyGoals({ total: weekly.length, completed: weekly.filter(g => doneGoals.has(g.id)).length });
-                setMonthlyGoals({ total: monthly.length, completed: monthly.filter(g => doneGoals.has(g.id)).length });
-            }
+        return {
+            dailyTasks: tasksData
+                .map(t => ({ id: t.id, title: t.title, points: t.points, completed: doneToday.has(t.id) }))
+                // What's still outstanding matters more than what's done.
+                .sort((a, b) => Number(a.completed) - Number(b.completed)),
+            weeklyGoals: { total: weekly.length, completed: weekly.filter(g => doneGoals.has(g.id)).length },
+            monthlyGoals: { total: monthly.length, completed: monthly.filter(g => doneGoals.has(g.id)).length },
+            finance: {
+                upcomingBills: billsData
+                    .filter(b => !paid.has(b.id))
+                    .reduce((sum, b) => sum + Number(b.amount), 0),
+                savings: savingsData.reduce((sum, s) => sum + Number(s.current_amount), 0),
+                investments: invData.reduce((sum, i) => sum + Number(i.amount), 0)
+            },
+            currentBook: bookData,
+            exerciseWeek: { sessions: workoutsThisWeek.length, target: exGoal?.target_value ?? 0 },
+            userLists: listsData
+        };
+    });
 
-            // 3. Fetch Finance Snapshot
-            // Bills: unpaid and due within 7 days, in the user's own calendar
-            // rather than UTC (FIX-6).
-            const { data: billsData } = await supabase
-                .from('finance_bills')
-                .select('amount, due_date')
-                .eq('paid', false)
-                .gte('due_date', today)
-                .lte('due_date', addDays(today, 7));
-
-            // Savings
-            const { data: savingsData } = await supabase.from('finance_savings').select('current_amount');
-            // Investments
-            const { data: invData } = await supabase.from('finance_investments').select('amount');
-
-            setFinance({
-                upcomingBills: billsData ? billsData.reduce((sum, b) => sum + Number(b.amount), 0) : 0,
-                savings: savingsData ? savingsData.reduce((sum, s) => sum + Number(s.current_amount), 0) : 0,
-                investments: invData ? invData.reduce((sum, i) => sum + Number(i.amount), 0) : 0
-            });
-
-            // 4. Fetch Currently Reading
-            const { data: bookData } = await supabase
-                .from('books')
-                .select('title, author, cover_image')
-                .eq('status', 'reading')
-                .limit(1)
-                .single();
-            if (bookData) setCurrentBook(bookData);
-
-            // 5. Fetch Exercise (FIX-8).
-            // This used to count `.limit(10)` of all workouts ever, so the
-            // number under "Exercise This Week" was capped at 10 and had
-            // nothing to do with this week. Now it's the real count since
-            // Monday, in the user's timezone.
-            const { data: workoutsThisWeek } = await supabase
-                .from('exercises')
-                .select('id')
-                .gte('exercise_date', startOfWeekISO(today))
-                .lte('exercise_date', today);
-
-            const { data: exGoals } = await supabase
-                .from('exercise_goals')
-                .select('target_value')
-                .eq('period', 'weekly')
-                .limit(1)
-                .single();
-
-            setExerciseWeek({
-                sessions: workoutsThisWeek?.length || 0,
-                target: exGoals ? exGoals.target_value : 0
-            });
-
-            // 6. Fetch User Lists
-            const { data: listsData } = await supabase
-                .from('user_lists')
-                .select('id, name, icon')
-                .eq('user_id', user.id)
-                .limit(3);
-            if (listsData) setUserLists(listsData);
-
-        } catch (error) {
-            console.error('Error fetching dashboard summary:', error);
-            toast.error("Couldn't load your dashboard. Pull up and try again.");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const loading = dash.loading;
+    const dailyTasks = dash.data?.dailyTasks ?? [];
+    const weeklyGoals = dash.data?.weeklyGoals ?? { completed: 0, total: 0 };
+    const monthlyGoals = dash.data?.monthlyGoals ?? { completed: 0, total: 0 };
+    const finance = dash.data?.finance ?? { upcomingBills: 0, savings: 0, investments: 0 };
+    const currentBook = dash.data?.currentBook ?? null;
+    const exerciseWeek = dash.data?.exerciseWeek ?? { sessions: 0, target: 0 };
+    const userLists = dash.data?.userLists ?? [];
 
     // --- HANDLERS ---
     const handleQuickAdd = async (e: React.FormEvent) => {
@@ -163,18 +120,17 @@ const DashboardView: React.FC = () => {
         if (!user || !quickTaskText.trim()) return;
 
         try {
-            const { data, error } = await supabase.from('tasks').insert({
+            const { error } = await supabase.from('tasks').insert({
                 user_id: user.id,
                 title: quickTaskText,
                 points: 25,
                 category: 'General',
                 inbox: false
-            }).select().single();
+            });
 
             if (error) throw error;
-            if (data) {
-                setDailyTasks([{ id: data.id, title: data.title, points: data.points, completed: false }, ...dailyTasks]);
-            }
+            invalidate('dashboard');
+            invalidate('tasks');
             setQuickTaskText('');
         } catch (e) {
             console.error(e);
@@ -197,11 +153,17 @@ const DashboardView: React.FC = () => {
         }
     };
 
-    const toggleTask = async (task: any, origin?: CelebrationOrigin) => {
+    const toggleTask = async (task: DashboardTask, origin?: CelebrationOrigin) => {
         if (!user) return;
         const newCompletedStatus = !task.completed;
 
-        setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
+        // Optimistic through the cache. Patching only the tasks slice keeps the
+        // rest of the dashboard on screen while the write is in flight.
+        setQueryData<typeof dash.data>(`dashboard:${today}`, prev => prev && ({
+            ...prev,
+            dailyTasks: prev.dailyTasks.map(t =>
+                t.id === task.id ? { ...t, completed: newCompletedStatus } : t)
+        }));
 
         // Persist the checkbox before awarding points, so a failed write can't
         // leave the ledger crediting a task the database still thinks is open.
@@ -215,10 +177,15 @@ const DashboardView: React.FC = () => {
 
         if (error) {
             console.error(error);
-            setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
+            invalidate('dashboard');
             toast.error("Couldn't save that — your points are unchanged.");
             return;
         }
+
+        // The Tasks page lists the same rows; invalidating both is what keeps
+        // them agreeing without a navigation.
+        invalidate('dashboard');
+        invalidate('tasks');
 
         if (newCompletedStatus) {
             celebrate(origin); // MOT-4, after the write succeeded — see Tasks.tsx.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -6,7 +6,9 @@ import { Modal } from '../../components/ui/Modal';
 import { SkeletonGrid } from '../../components/ui/Skeleton';
 import { ShoppingCart, Film, Plane, Book, CheckSquare, Plus, Check, ChevronLeft, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import './Lists.css';
 
 interface ListItem {
@@ -35,10 +37,9 @@ const defaultColors = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#
 
 const ListsView: React.FC = () => {
     const { user } = useAuth();
-    const [lists, setLists] = useState<UserList[]>([]);
+    const toast = useToast();
     const [activeListId, setActiveListId] = useState<string | null>(null);
     const [newItemText, setNewItemText] = useState('');
-    const [loading, setLoading] = useState(true);
 
     const [showForm, setShowForm] = useState(false);
     const [newList, setNewList] = useState({ name: '', iconName: 'CheckSquare' as UserList['iconName'], color: defaultColors[0] });
@@ -47,59 +48,34 @@ const ListsView: React.FC = () => {
     const [editingList, setEditingList] = useState<UserList | null>(null);
     const [editingItem, setEditingItem] = useState<{ listId: string, item: ListItem } | null>(null);
 
-    useEffect(() => {
-        if (user) fetchLists();
-    }, [user]);
+    // ARCH-3. Two round trips rather than one, but still a single cached query:
+    // list_items has no user_id filter of its own here, it is scoped by the list
+    // ids we just read, which RLS has already restricted to this user.
+    const listsQ = useQuery<UserList[]>(user ? 'lists' : null, async () => {
+        const listsData = await fromSupabase(
+            supabase.from('user_lists').select('*').order('created_at', { ascending: false })
+        );
+        const listIds = listsData.map(l => l.id);
 
-    const fetchLists = async () => {
-        setLoading(true);
-        try {
-            const { data: listsData, error: listsError } = await supabase
-                .from('user_lists')
-                .select('*')
-                .order('created_at', { ascending: false });
+        const itemsData = listIds.length === 0 ? [] : await fromSupabase(
+            supabase.from('list_items').select('*')
+                .in('list_id', listIds)
+                .order('created_at', { ascending: true })
+        );
 
-            if (listsError) throw listsError;
+        return listsData.map(l => ({
+            id: l.id,
+            name: l.name,
+            iconName: (l.icon as UserList['iconName']) || 'CheckSquare',
+            color: l.color || '#3B82F6',
+            items: itemsData
+                .filter(item => item.list_id === l.id)
+                .map(item => ({ id: item.id, text: item.text, checked: item.checked }))
+        }));
+    });
 
-            if (listsData) {
-                const listIds = listsData.map(l => l.id);
-
-                let itemsData: any[] = [];
-                if (listIds.length > 0) {
-                    const { data: fetchItems, error: itemsError } = await supabase
-                        .from('list_items')
-                        .select('*')
-                        .in('list_id', listIds)
-                        .order('created_at', { ascending: true });
-
-                    if (itemsError) throw itemsError;
-                    if (fetchItems) itemsData = fetchItems;
-                }
-
-                const formattedLists: UserList[] = listsData.map(l => {
-                    const listItems = itemsData.filter(item => item.list_id === l.id).map(item => ({
-                        id: item.id,
-                        text: item.text,
-                        checked: item.checked
-                    }));
-
-                    return {
-                        id: l.id,
-                        name: l.name,
-                        iconName: l.icon as UserList['iconName'] || 'CheckSquare',
-                        color: l.color || '#3B82F6',
-                        items: listItems
-                    };
-                });
-
-                setLists(formattedLists);
-            }
-        } catch (error) {
-            console.error('Error fetching lists:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const lists = listsQ.data ?? [];
+    const loading = listsQ.loading;
 
     // --- Create Actions ---
     const handleCreateList = async (e: React.FormEvent) => {
@@ -107,24 +83,20 @@ const ListsView: React.FC = () => {
         if (!user || !newList.name.trim()) return;
 
         try {
-            const { data, error } = await supabase.from('user_lists').insert({
+            const { error } = await supabase.from('user_lists').insert({
                 user_id: user.id,
                 name: newList.name,
                 icon: newList.iconName,
                 color: newList.color
-            }).select().single();
+            });
 
             if (error) throw error;
-            if (data) {
-                setLists(prev => [{
-                    id: data.id, name: data.name, iconName: data.icon as UserList['iconName'] || 'CheckSquare',
-                    color: data.color || defaultColors[0], items: []
-                }, ...prev]);
-            }
+            invalidate('lists');
             setShowForm(false);
             setNewList({ name: '', iconName: 'CheckSquare', color: defaultColors[0] });
         } catch (error) {
             console.error(error);
+            toast.error("Couldn't create that list.");
         }
     };
 
@@ -133,18 +105,16 @@ const ListsView: React.FC = () => {
         if (!user || !newItemText.trim() || !activeListId) return;
 
         try {
-            const { data, error } = await supabase.from('list_items').insert({
+            const { error } = await supabase.from('list_items').insert({
                 user_id: user.id, list_id: activeListId, text: newItemText, checked: false
-            }).select().single();
+            });
 
             if (error) throw error;
-            if (data) {
-                const newItem: ListItem = { id: data.id, text: data.text, checked: data.checked };
-                setLists(prev => prev.map(l => l.id === activeListId ? { ...l, items: [...l.items, newItem] } : l));
-            }
+            invalidate('lists');
             setNewItemText('');
         } catch (error) {
             console.error(error);
+            toast.error("Couldn't add that item.");
         }
     };
 
@@ -157,8 +127,7 @@ const ListsView: React.FC = () => {
             await supabase.from('user_lists').update({
                 name: editingList.name, icon: editingList.iconName, color: editingList.color
             }).eq('id', editingList.id);
-
-            setLists(prev => prev.map(l => l.id === editingList.id ? editingList : l));
+            invalidate('lists');
             setEditingList(null);
         } catch (error) {
             console.error('Error updating list:', error);
@@ -174,16 +143,11 @@ const ListsView: React.FC = () => {
                 text: editingItem.item.text
             }).eq('id', editingItem.item.id);
 
-            setLists(prev => prev.map(l => {
-                if (l.id !== editingItem.listId) return l;
-                return {
-                    ...l,
-                    items: l.items.map(i => i.id === editingItem.item.id ? editingItem.item : i)
-                };
-            }));
+            invalidate('lists');
             setEditingItem(null);
         } catch (error) {
             console.error('Error updating item:', error);
+            toast.error("Couldn't save that item.");
         }
     };
 
@@ -192,17 +156,13 @@ const ListsView: React.FC = () => {
         if (!itemToUpdate) return;
 
         const newCheckedStatus = !itemToUpdate.checked;
-        setLists(prev => prev.map(l => l.id === listId ? {
-            ...l, items: l.items.map(item => item.id === itemId ? { ...item, checked: newCheckedStatus } : item)
-        } : l));
+            invalidate('lists');
 
         try {
             await supabase.from('list_items').update({ checked: newCheckedStatus }).eq('id', itemId);
         } catch (error) {
             console.error(error);
-            setLists(prev => prev.map(l => l.id === listId ? {
-                ...l, items: l.items.map(item => item.id === itemId ? { ...item, checked: !newCheckedStatus } : item)
-            } : l));
+            invalidate('lists');
         }
     };
 
@@ -211,19 +171,17 @@ const ListsView: React.FC = () => {
         if (!window.confirm(`Are you sure you want to delete the list "${list.name}"?`)) return;
         try {
             await supabase.from('user_lists').delete().eq('id', list.id);
-            setLists(prev => prev.filter(l => l.id !== list.id));
+            invalidate('lists');
         } catch (error) {
             console.error('Error deleting list:', error);
         }
     };
 
-    const handleDeleteItem = async (listId: string, item: ListItem) => {
+    const handleDeleteItem = async (_listId: string, item: ListItem) => {
         if (!window.confirm(`Are you sure you want to delete "${item.text}"?`)) return;
         try {
             await supabase.from('list_items').delete().eq('id', item.id);
-            setLists(prev => prev.map(l => l.id === listId ? {
-                ...l, items: l.items.filter(i => i.id !== item.id)
-            } : l));
+            invalidate('lists');
         } catch (error) {
             console.error('Error deleting item:', error);
         }
@@ -237,16 +195,19 @@ const ListsView: React.FC = () => {
         const completedItemIds = listToClear.items.filter(i => i.checked).map(i => i.id);
         if (completedItemIds.length === 0) return;
 
-        setLists(prev => prev.map(l => l.id === activeListId ? {
-            ...l, items: l.items.filter(item => !item.checked)
-        } : l));
+        // Optimistic: drop them from the cached list, then confirm against the
+        // database. A failed delete re-reads the truth rather than guessing it.
+        setQueryData<UserList[]>('lists', prev => (prev ?? []).map(l =>
+            l.id === activeListId
+                ? { ...l, items: l.items.filter(i => !i.checked) }
+                : l));
 
-        try {
-            await supabase.from('list_items').delete().in('id', completedItemIds);
-        } catch (error) {
+        const { error } = await supabase.from('list_items').delete().in('id', completedItemIds);
+        if (error) {
             console.error('Error clearing items:', error);
-            fetchLists(); // revert
+            toast.error("Couldn't clear those items.");
         }
+        invalidate('lists');
     };
 
 

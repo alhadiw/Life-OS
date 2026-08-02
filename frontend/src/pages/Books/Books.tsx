@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -6,7 +6,9 @@ import { Modal } from '../../components/ui/Modal';
 import { SkeletonGrid } from '../../components/ui/Skeleton';
 import { BookOpen, Star, Clock, CheckCircle2, Plus, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import './Books.css';
 
 type BookStatus = 'want_to_read' | 'reading' | 'finished';
@@ -23,63 +25,50 @@ interface Book {
 
 const BooksView: React.FC = () => {
     const { user } = useAuth();
-    const [books, setBooks] = useState<Book[]>([]);
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<BookStatus>('reading');
-    const [loading, setLoading] = useState(true);
 
     const [showForm, setShowForm] = useState(false);
     const [newBook, setNewBook] = useState({ title: '', author: '', genre: '', coverImage: '' });
 
     const [editingBook, setEditingBook] = useState<Book | null>(null);
 
-    useEffect(() => {
-        if (user) fetchBooks();
-    }, [user]);
+    // ARCH-3 — one shared, cached query instead of a hand-rolled useEffect.
+    const booksQ = useQuery<Book[]>(user ? 'books' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('books').select('*').order('created_at', { ascending: false })
+        );
+        return rows.map(b => ({
+            id: b.id, title: b.title, author: b.author, status: b.status as BookStatus,
+            genre: b.genre ?? undefined, rating: b.rating ?? undefined,
+            coverImage: b.cover_image ?? undefined
+        }));
+    });
 
-    const fetchBooks = async () => {
-        setLoading(true);
-        try {
-            const { data, error } = await supabase.from('books').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
-            if (data) {
-                setBooks(data.map(b => ({
-                    id: b.id, title: b.title, author: b.author, status: b.status as BookStatus,
-                    genre: b.genre ?? undefined, rating: b.rating ?? undefined,
-                    coverImage: b.cover_image ?? undefined
-                })));
-            }
-        } catch (error) {
-            console.error('Error fetching books:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const books = booksQ.data ?? [];
+    const loading = booksQ.loading;
 
     const handleCreateBook = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !newBook.title.trim() || !newBook.author.trim()) return;
 
         try {
-            const { data, error } = await supabase.from('books').insert({
+            const { error } = await supabase.from('books').insert({
                 user_id: user.id,
                 title: newBook.title,
                 author: newBook.author,
                 status: activeTab,
                 genre: newBook.genre,
                 cover_image: newBook.coverImage
-            }).select().single();
+            });
 
             if (error) throw error;
-            if (data) {
-                setBooks(prev => [{
-                    id: data.id, title: data.title, author: data.author, status: data.status as BookStatus,
-                    genre: data.genre ?? undefined, coverImage: data.cover_image ?? undefined
-                }, ...prev]);
-            }
+            invalidate('books');
             setShowForm(false);
             setNewBook({ title: '', author: '', genre: '', coverImage: '' });
         } catch (error) {
             console.error(error);
+            toast.error("Couldn't add that book.");
         }
     };
 
@@ -87,45 +76,52 @@ const BooksView: React.FC = () => {
         e.preventDefault();
         if (!editingBook || !editingBook.title.trim() || !editingBook.author.trim()) return;
 
-        try {
-            await supabase.from('books').update({
-                title: editingBook.title,
-                author: editingBook.author,
-                genre: editingBook.genre,
-                cover_image: editingBook.coverImage,
-                rating: editingBook.rating
-            }).eq('id', editingBook.id);
+        const { error } = await supabase.from('books').update({
+            title: editingBook.title,
+            author: editingBook.author,
+            genre: editingBook.genre,
+            cover_image: editingBook.coverImage,
+            rating: editingBook.rating
+        }).eq('id', editingBook.id);
 
-            setBooks(prev => prev.map(b => b.id === editingBook.id ? editingBook : b));
-            setEditingBook(null);
-        } catch (error) {
+        if (error) {
             console.error(error);
+            toast.error("Couldn't save that book.");
+            return;
         }
+        invalidate('books');
+        setEditingBook(null);
     };
 
     const handleDeleteBook = async (book: Book) => {
         if (!window.confirm(`Are you sure you want to delete "${book.title}"?`)) return;
-        try {
-            await supabase.from('books').delete().eq('id', book.id);
-            setBooks(prev => prev.filter(b => b.id !== book.id));
-        } catch (error) {
+        const { error } = await supabase.from('books').delete().eq('id', book.id);
+        if (error) {
             console.error(error);
+            toast.error("Couldn't delete that book.");
+            return;
         }
+        invalidate('books');
     };
 
     const moveBook = async (id: string, newStatus: BookStatus) => {
-        const bookToMove = books.find(b => b.id === id);
-        if (!bookToMove) return;
+        if (!books.some(b => b.id === id)) return;
 
-        const oldStatus = bookToMove.status;
-        setBooks(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
+        // Optimistic through the cache rather than local state, so every
+        // component reading 'books' moves together. On failure we re-read the
+        // truth instead of trying to reconstruct it (FIX-2's contract: the UI
+        // must never keep showing a change the database rejected).
+        setQueryData<Book[]>('books', prev =>
+            (prev ?? []).map(b => (b.id === id ? { ...b, status: newStatus } : b)));
 
-        try {
-            await supabase.from('books').update({ status: newStatus }).eq('id', id);
-        } catch (error) {
+        const { error } = await supabase.from('books').update({ status: newStatus }).eq('id', id);
+        if (error) {
             console.error(error);
-            setBooks(prev => prev.map(b => b.id === id ? { ...b, status: oldStatus } : b));
+            invalidate('books');
+            toast.error("Couldn't move that book.");
+            return;
         }
+        invalidate('books');
     };
 
     const filteredBooks = books.filter(b => b.status === activeTab);

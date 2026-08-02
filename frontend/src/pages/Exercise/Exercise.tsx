@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -10,6 +10,7 @@ import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import { todayISO, addDays } from '../../lib/dates';
 import './Exercise.css';
 
@@ -40,10 +41,7 @@ const ExerciseView: React.FC = () => {
     const { user } = useAuth();
     const toast = useToast();
 
-    const [workouts, setWorkouts] = useState<Workout[]>([]);
-    const [goals, setGoals] = useState<ExerciseGoal[]>([]);
     const [activeTab, setActiveTab] = useState<'log' | 'goals'>('log');
-    const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
 
     // Create forms state
@@ -54,41 +52,32 @@ const ExerciseView: React.FC = () => {
     const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
     const [editingGoal, setEditingGoal] = useState<ExerciseGoal | null>(null);
 
-    useEffect(() => {
-        if (user) {
-            fetchExerciseData();
-        }
-    }, [user, activeTab]);
+    // ARCH-3 — both tabs are separate cached queries, so switching tabs no
+    // longer refetches the one you just left.
+    const workoutsQ = useQuery<Workout[]>(user ? 'exercise:workouts' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('exercises').select('*').order('exercise_date', { ascending: false })
+        );
+        return rows.map(w => ({
+            id: w.id, type: w.type, durationMinutes: w.duration_minutes,
+            date: w.exercise_date, intensity: w.intensity ?? undefined, notes: w.notes ?? undefined
+        }));
+    });
 
-    const fetchExerciseData = async () => {
-        setLoading(true);
-        try {
-            if (activeTab === 'log') {
-                const { data, error } = await supabase.from('exercises').select('*').order('exercise_date', { ascending: false });
-                if (error) throw error;
-                if (data) {
-                    setWorkouts(data.map(w => ({
-                        id: w.id, type: w.type, durationMinutes: w.duration_minutes,
-                        date: w.exercise_date, intensity: w.intensity ?? undefined, notes: w.notes ?? undefined
-                    })));
-                }
-            } else {
-                const { data, error } = await supabase.from('exercise_goals').select('*').order('created_at', { ascending: false });
-                if (error) throw error;
-                if (data) {
-                    setGoals(data.map(g => ({
-                        id: g.id, title: g.title, period: g.period as 'weekly' | 'monthly',
-                        targetValue: g.target_value, currentValue: g.current_value,
-                        metric: g.metric as 'sessions' | 'minutes', completed: g.completed, pointsReward: g.points_reward
-                    })));
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching exercise data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const goalsQ = useQuery<ExerciseGoal[]>(user ? 'exercise:goals' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('exercise_goals').select('*').order('created_at', { ascending: false })
+        );
+        return rows.map(g => ({
+            id: g.id, title: g.title, period: g.period as 'weekly' | 'monthly',
+            targetValue: g.target_value, currentValue: g.current_value,
+            metric: g.metric as 'sessions' | 'minutes', completed: g.completed, pointsReward: g.points_reward
+        }));
+    });
+
+    const workouts = workoutsQ.data ?? [];
+    const goals = goalsQ.data ?? [];
+    const loading = activeTab === 'log' ? workoutsQ.loading : goalsQ.loading;
 
     // --- Create Actions ---
     const handleLogWorkout = async (e: React.FormEvent) => {
@@ -102,10 +91,7 @@ const ExerciseView: React.FC = () => {
             }).select().single();
             if (error) throw error;
             if (data) {
-                setWorkouts(prev => [{
-                    id: data.id, type: data.type, durationMinutes: data.duration_minutes,
-                    date: data.exercise_date, intensity: data.intensity ?? undefined, notes: data.notes ?? undefined
-                }, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                invalidate('exercise:workouts');
             }
             setShowForm(false);
             setNewWorkout({ type: '', durationMinutes: 30, date: todayISO(), intensity: 'Moderate', notes: '' });
@@ -124,11 +110,7 @@ const ExerciseView: React.FC = () => {
 
             if (error) throw error;
             if (data) {
-                setGoals(prev => [{
-                    id: data.id, title: data.title, period: data.period, targetValue: data.target_value,
-                    currentValue: data.current_value, metric: data.metric as 'sessions' | 'minutes',
-                    completed: data.completed, pointsReward: data.points_reward
-                }, ...prev]);
+                invalidate('exercise:goals');
             }
             setShowForm(false);
             setNewGoal({ title: '', period: 'weekly', targetValue: 3, metric: 'sessions', pointsReward: 100 });
@@ -138,7 +120,10 @@ const ExerciseView: React.FC = () => {
     const completeGoal = async (goal: ExerciseGoal, origin?: CelebrationOrigin) => {
         if (goal.completed) return;
 
-        setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, completed: true, currentValue: g.targetValue } : g));
+        // Optimistic through the cache so anything else reading this query moves
+        // with it; on failure we re-read rather than reconstruct.
+        setQueryData<ExerciseGoal[]>('exercise:goals', prev => (prev ?? []).map(g =>
+            g.id === goal.id ? { ...g, completed: true, currentValue: g.targetValue } : g));
 
         // This used to award the points first and wrap the write in a try/catch
         // — which caught nothing, because supabase-js resolves with an `error`
@@ -152,11 +137,12 @@ const ExerciseView: React.FC = () => {
 
         if (error) {
             console.error('Error completing exercise goal:', error);
-            setGoals(prev => prev.map(g => g.id === goal.id ? goal : g));
+            invalidate('exercise:goals');
             toast.error("Couldn't save that — your points are unchanged.");
             return;
         }
 
+        invalidate('exercise:goals');
         celebrate(origin); // MOT-4
         await addPoints(goal.pointsReward, `Exercise Goal Met: ${goal.title}`);
     };
@@ -171,8 +157,7 @@ const ExerciseView: React.FC = () => {
                 type: editingWorkout.type, duration_minutes: editingWorkout.durationMinutes,
                 exercise_date: editingWorkout.date, intensity: editingWorkout.intensity, notes: editingWorkout.notes
             }).eq('id', editingWorkout.id);
-
-            setWorkouts(prev => prev.map(w => w.id === editingWorkout.id ? editingWorkout : w).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            invalidate('exercise:workouts');
             setEditingWorkout(null);
         } catch (e) { console.error(e); }
     };
@@ -186,8 +171,7 @@ const ExerciseView: React.FC = () => {
                 title: editingGoal.title, period: editingGoal.period, target_value: editingGoal.targetValue,
                 metric: editingGoal.metric, points_reward: editingGoal.pointsReward
             }).eq('id', editingGoal.id);
-
-            setGoals(prev => prev.map(g => g.id === editingGoal.id ? editingGoal : g));
+            invalidate('exercise:goals');
             setEditingGoal(null);
         } catch (e) { console.error(e); }
     };
@@ -197,7 +181,7 @@ const ExerciseView: React.FC = () => {
         if (!window.confirm(`Are you sure you want to delete this ${w.type} workout?`)) return;
         try {
             await supabase.from('exercises').delete().eq('id', w.id);
-            setWorkouts(prev => prev.filter(work => work.id !== w.id));
+            invalidate('exercise:workouts');
         } catch (e) { console.error(e); }
     };
 
@@ -205,7 +189,7 @@ const ExerciseView: React.FC = () => {
         if (!window.confirm(`Are you sure you want to delete goal "${g.title}"?`)) return;
         try {
             await supabase.from('exercise_goals').delete().eq('id', g.id);
-            setGoals(prev => prev.filter(goal => goal.id !== g.id));
+            invalidate('exercise:goals');
         } catch (e) { console.error(e); }
     };
 

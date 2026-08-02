@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -7,7 +7,9 @@ import { SkeletonList } from '../../components/ui/Skeleton';
 import { Plus, Check, WalletCards, PiggyBank, TrendingUp, Calendar, Trash2, Edit2 } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate, setQueryData } from '../../hooks/useQuery';
 import { todayISO, startOfMonthISO } from '../../lib/dates';
 import './Finance.css';
 
@@ -41,14 +43,10 @@ interface Investment {
 
 const FinanceView: React.FC = () => {
     const { currencySymbol } = usePoints();
+    const toast = useToast();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<FinanceTab>('bills');
 
-    const [bills, setBills] = useState<Bill[]>([]);
-    const [savings, setSavings] = useState<SavingsGoal[]>([]);
-    const [investments, setInvestments] = useState<Investment[]>([]);
-
-    const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
 
     // Create Form States
@@ -61,86 +59,90 @@ const FinanceView: React.FC = () => {
     const [editingSaving, setEditingSaving] = useState<SavingsGoal | null>(null);
     const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
 
-    useEffect(() => {
-        if (user) {
-            fetchFinanceData();
-        }
-    }, [user, activeTab]);
+    // ARCH-3 — three independent cached queries. The bills one is keyed on the
+    // current month so it re-reads naturally when the month rolls over, which is
+    // what ARCH-1 replaced the monthly reset with.
+    const period = startOfMonthISO();
 
-    const fetchFinanceData = async () => {
-        setLoading(true);
-        try {
-            if (activeTab === 'bills') {
-                // ARCH-1 — "paid this month" is a payment row for this month,
-                // not a boolean that useAutoReset flipped back every month while
-                // also mutating due_date. due_date is now stable.
-                const period = startOfMonthISO();
-                const [{ data, error }, { data: payments }] = await Promise.all([
-                    supabase.from('finance_bills').select('*').order('due_date', { ascending: true }),
-                    supabase.from('bill_payments').select('bill_id').eq('period_month', period)
-                ]);
-                const paidThisMonth = new Set((payments ?? []).map(p => p.bill_id));
-                if (error) throw error;
-                if (data) {
-                    setBills(data.map(b => ({
-                        id: b.id, name: b.name, amount: Number(b.amount),
-                        dueDate: b.due_date, paid: paidThisMonth.has(b.id), category: b.category || 'General', frequency: b.frequency
-                    })));
-                }
-            } else if (activeTab === 'savings') {
-                const { data, error } = await supabase.from('finance_savings').select('*').order('created_at', { ascending: true });
-                if (error) throw error;
-                if (data) {
-                    setSavings(data.map(s => ({
-                        id: s.id, name: s.name, targetAmount: Number(s.target_amount), currentAmount: Number(s.current_amount)
-                    })));
-                }
-            } else if (activeTab === 'investments') {
-                const { data, error } = await supabase.from('finance_investments').select('*').order('investment_date', { ascending: false });
-                if (error) throw error;
-                if (data) {
-                    setInvestments(data.map(i => ({
-                        id: i.id, platform: i.platform, asset: i.asset, amount: Number(i.amount), date: i.investment_date
-                    })));
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching finance data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const billsQ = useQuery<Bill[]>(user ? `finance:bills:${period}` : null, async () => {
+        const [rows, payments] = await Promise.all([
+            fromSupabase(supabase.from('finance_bills').select('*').order('due_date', { ascending: true })),
+            fromSupabase(supabase.from('bill_payments').select('bill_id').eq('period_month', period))
+        ]);
+        const paidThisMonth = new Set(payments.map(p => p.bill_id));
+        return rows.map(b => ({
+            id: b.id, name: b.name, amount: Number(b.amount),
+            dueDate: b.due_date, paid: paidThisMonth.has(b.id),
+            category: b.category || 'General', frequency: b.frequency
+        }));
+    });
+
+    const savingsQ = useQuery<SavingsGoal[]>(user ? 'finance:savings' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('finance_savings').select('*').order('created_at', { ascending: true })
+        );
+        return rows.map(s => ({
+            id: s.id, name: s.name,
+            targetAmount: Number(s.target_amount), currentAmount: Number(s.current_amount)
+        }));
+    });
+
+    const investmentsQ = useQuery<Investment[]>(user ? 'finance:investments' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('finance_investments').select('*').order('investment_date', { ascending: false })
+        );
+        return rows.map(i => ({
+            id: i.id, platform: i.platform, asset: i.asset,
+            amount: Number(i.amount), date: i.investment_date
+        }));
+    });
+
+    const bills = billsQ.data ?? [];
+    const savings = savingsQ.data ?? [];
+    const investments = investmentsQ.data ?? [];
+    const loading = activeTab === 'bills' ? billsQ.loading
+        : activeTab === 'savings' ? savingsQ.loading
+            : investmentsQ.loading;
 
     // --- Actions ---
     const toggleBillPaid = async (id: string, currentlyPaid: boolean) => {
         if (!user) return;
         const newPaidStatus = !currentlyPaid;
-        setBills(prev => prev.map(b => b.id === id ? { ...b, paid: newPaidStatus } : b));
-        try {
-            const period = startOfMonthISO();
-            const bill = bills.find(b => b.id === id);
-            const { error } = newPaidStatus
-                ? await supabase.from('bill_payments').insert({
-                    user_id: user.id, bill_id: id, period_month: period, amount: bill?.amount ?? null
-                })
-                : await supabase.from('bill_payments').delete()
-                    .eq('bill_id', id).eq('period_month', period);
-            if (error) throw error;
-        } catch (error) {
+        const bill = bills.find(b => b.id === id);
+
+        setQueryData<Bill[]>(`finance:bills:${period}`, prev =>
+            (prev ?? []).map(b => (b.id === id ? { ...b, paid: newPaidStatus } : b)));
+
+        const { error } = newPaidStatus
+            ? await supabase.from('bill_payments').insert({
+                user_id: user.id, bill_id: id, period_month: period, amount: bill?.amount ?? null
+            })
+            : await supabase.from('bill_payments').delete()
+                .eq('bill_id', id).eq('period_month', period);
+
+        if (error) {
             console.error(error);
-            setBills(prev => prev.map(b => b.id === id ? { ...b, paid: currentlyPaid } : b));
+            toast.error("Couldn't update that bill.");
         }
+        // Either way, re-read: on success to pick up anything else that changed,
+        // on failure to discard an optimistic update the database rejected.
+        invalidate('finance:bills');
+        invalidate('dashboard');
     };
 
     const addSavings = async (id: string, currentAmount: number, addAmount: number) => {
         const newAmount = currentAmount + addAmount;
-        setSavings(prev => prev.map(s => s.id === id ? { ...s, currentAmount: newAmount } : s));
-        try {
-            await supabase.from('finance_savings').update({ current_amount: newAmount }).eq('id', id);
-        } catch (error) {
+        setQueryData<SavingsGoal[]>('finance:savings', prev =>
+            (prev ?? []).map(s => (s.id === id ? { ...s, currentAmount: newAmount } : s)));
+
+        const { error } = await supabase.from('finance_savings')
+            .update({ current_amount: newAmount }).eq('id', id);
+        if (error) {
             console.error(error);
-            setSavings(prev => prev.map(s => s.id === id ? { ...s, currentAmount: currentAmount } : s));
+            toast.error("Couldn't save that deposit.");
         }
+        invalidate('finance:savings');
+        invalidate('dashboard');
     };
 
     // --- Create Handlers ---
@@ -155,10 +157,7 @@ const FinanceView: React.FC = () => {
 
             if (error) throw error;
             if (data) {
-                setBills(prev => [...prev, {
-                    id: data.id, name: data.name, amount: Number(data.amount), dueDate: data.due_date,
-                    paid: false, category: data.category || 'General', frequency: data.frequency
-                }].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()));
+            invalidate('finance:bills'); invalidate('dashboard');
             }
             setShowForm(false);
             setNewBill({ name: '', amount: 0, dueDate: '', category: 'General', frequency: 'monthly' });
@@ -175,9 +174,7 @@ const FinanceView: React.FC = () => {
 
             if (error) throw error;
             if (data) {
-                setSavings(prev => [...prev, {
-                    id: data.id, name: data.name, targetAmount: Number(data.target_amount), currentAmount: 0
-                }]);
+            invalidate('finance:savings'); invalidate('dashboard');
             }
             setShowForm(false);
             setNewSaving({ name: '', targetAmount: 0 });
@@ -195,9 +192,7 @@ const FinanceView: React.FC = () => {
 
             if (error) throw error;
             if (data) {
-                setInvestments(prev => [{
-                    id: data.id, platform: data.platform, asset: data.asset, amount: Number(data.amount), date: data.investment_date
-                }, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            invalidate('finance:investments'); invalidate('dashboard');
             }
             setShowForm(false);
             setNewInvestment({ platform: '', asset: '', amount: 0, date: todayISO() });
@@ -213,7 +208,7 @@ const FinanceView: React.FC = () => {
                 name: editingBill.name, amount: editingBill.amount, due_date: editingBill.dueDate,
                 category: editingBill.category, frequency: editingBill.frequency
             }).eq('id', editingBill.id);
-            setBills(prev => prev.map(b => b.id === editingBill.id ? editingBill : b));
+            invalidate('finance:bills'); invalidate('dashboard');
             setEditingBill(null);
         } catch (e) { console.error(e); }
     };
@@ -225,7 +220,7 @@ const FinanceView: React.FC = () => {
             await supabase.from('finance_savings').update({
                 name: editingSaving.name, target_amount: editingSaving.targetAmount
             }).eq('id', editingSaving.id);
-            setSavings(prev => prev.map(s => s.id === editingSaving.id ? editingSaving : s));
+            invalidate('finance:savings'); invalidate('dashboard');
             setEditingSaving(null);
         } catch (e) { console.error(e); }
     };
@@ -238,7 +233,7 @@ const FinanceView: React.FC = () => {
                 platform: editingInvestment.platform, asset: editingInvestment.asset,
                 amount: editingInvestment.amount, investment_date: editingInvestment.date
             }).eq('id', editingInvestment.id);
-            setInvestments(prev => prev.map(i => i.id === editingInvestment.id ? editingInvestment : i));
+            invalidate('finance:investments'); invalidate('dashboard');
             setEditingInvestment(null);
         } catch (e) { console.error(e); }
     };
@@ -248,21 +243,21 @@ const FinanceView: React.FC = () => {
         if (!window.confirm(`Are you sure you want to delete bill "${bill.name}"?`)) return;
         try {
             await supabase.from('finance_bills').delete().eq('id', bill.id);
-            setBills(prev => prev.filter(b => b.id !== bill.id));
+            invalidate('finance:bills'); invalidate('dashboard');
         } catch (e) { console.error(e); }
     };
     const handleDeleteSaving = async (saving: SavingsGoal) => {
         if (!window.confirm(`Are you sure you want to delete goal "${saving.name}"?`)) return;
         try {
             await supabase.from('finance_savings').delete().eq('id', saving.id);
-            setSavings(prev => prev.filter(s => s.id !== saving.id));
+            invalidate('finance:savings'); invalidate('dashboard');
         } catch (e) { console.error(e); }
     };
     const handleDeleteInvestment = async (inv: Investment) => {
         if (!window.confirm(`Are you sure you want to delete investment "${inv.asset}"?`)) return;
         try {
             await supabase.from('finance_investments').delete().eq('id', inv.id);
-            setInvestments(prev => prev.filter(i => i.id !== inv.id));
+            invalidate('finance:investments'); invalidate('dashboard');
         } catch (e) { console.error(e); }
     };
 

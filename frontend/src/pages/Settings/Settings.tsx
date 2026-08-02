@@ -7,6 +7,7 @@ import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useQuery, fromSupabase, invalidate } from '../../hooks/useQuery';
 import { todayISO, getUserTimezone } from '../../lib/dates';
 import { errorMessage } from '../../lib/errors';
 import './Settings.css';
@@ -34,19 +35,22 @@ const SettingsView: React.FC = () => {
         setLocalSymbol(currencySymbol);
     }, [conversionRate, currencySymbol]);
 
+    // ARCH-3 — the profile is a cached query like everything else, so saving it
+    // below can invalidate rather than reach back into local state.
+    const profileQ = useQuery(user ? 'profile' : null, async () => {
+        const rows = await fromSupabase(
+            supabase.from('profiles').select('display_name, email').eq('id', user!.id)
+        );
+        return rows[0] ?? null;
+    });
+
     useEffect(() => {
-        const fetchProfile = async () => {
-            if (!user) return;
-            const { data } = await supabase.from('profiles').select('display_name, email').eq('id', user.id).single();
-            if (data) {
-                setProfileData({
-                    name: data.display_name || '',
-                    email: data.email || user.email || ''
-                });
-            }
-        };
-        fetchProfile();
-    }, [user]);
+        if (!profileQ.data) return;
+        setProfileData({
+            name: profileQ.data.display_name || '',
+            email: profileQ.data.email || user?.email || ''
+        });
+    }, [profileQ.data, user]);
 
     const handleSavePointsSettings = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -68,6 +72,7 @@ const SettingsView: React.FC = () => {
             }).eq('id', user.id);
 
             if (profileError) throw profileError;
+            invalidate('profile');
 
             // Optional: update email
             if (profileData.email !== user.email) {
