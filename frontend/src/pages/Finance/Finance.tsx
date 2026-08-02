@@ -8,7 +8,7 @@ import { Plus, Check, WalletCards, PiggyBank, TrendingUp, Calendar, Trash2, Edit
 import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { todayISO } from '../../lib/dates';
+import { todayISO, startOfMonthISO } from '../../lib/dates';
 import './Finance.css';
 
 type FinanceTab = 'bills' | 'savings' | 'investments';
@@ -71,12 +71,20 @@ const FinanceView: React.FC = () => {
         setLoading(true);
         try {
             if (activeTab === 'bills') {
-                const { data, error } = await supabase.from('finance_bills').select('*').order('due_date', { ascending: true });
+                // ARCH-1 — "paid this month" is a payment row for this month,
+                // not a boolean that useAutoReset flipped back every month while
+                // also mutating due_date. due_date is now stable.
+                const period = startOfMonthISO();
+                const [{ data, error }, { data: payments }] = await Promise.all([
+                    supabase.from('finance_bills').select('*').order('due_date', { ascending: true }),
+                    supabase.from('bill_payments').select('bill_id').eq('period_month', period)
+                ]);
+                const paidThisMonth = new Set((payments ?? []).map(p => p.bill_id));
                 if (error) throw error;
                 if (data) {
                     setBills(data.map(b => ({
                         id: b.id, name: b.name, amount: Number(b.amount),
-                        dueDate: b.due_date, paid: b.paid, category: b.category || 'General', frequency: b.frequency
+                        dueDate: b.due_date, paid: paidThisMonth.has(b.id), category: b.category || 'General', frequency: b.frequency
                     })));
                 }
             } else if (activeTab === 'savings') {
@@ -105,10 +113,19 @@ const FinanceView: React.FC = () => {
 
     // --- Actions ---
     const toggleBillPaid = async (id: string, currentlyPaid: boolean) => {
+        if (!user) return;
         const newPaidStatus = !currentlyPaid;
         setBills(prev => prev.map(b => b.id === id ? { ...b, paid: newPaidStatus } : b));
         try {
-            await supabase.from('finance_bills').update({ paid: newPaidStatus }).eq('id', id);
+            const period = startOfMonthISO();
+            const bill = bills.find(b => b.id === id);
+            const { error } = newPaidStatus
+                ? await supabase.from('bill_payments').insert({
+                    user_id: user.id, bill_id: id, period_month: period, amount: bill?.amount ?? null
+                })
+                : await supabase.from('bill_payments').delete()
+                    .eq('bill_id', id).eq('period_month', period);
+            if (error) throw error;
         } catch (error) {
             console.error(error);
             setBills(prev => prev.map(b => b.id === id ? { ...b, paid: currentlyPaid } : b));
@@ -140,7 +157,7 @@ const FinanceView: React.FC = () => {
             if (data) {
                 setBills(prev => [...prev, {
                     id: data.id, name: data.name, amount: Number(data.amount), dueDate: data.due_date,
-                    paid: data.paid, category: data.category || 'General', frequency: data.frequency
+                    paid: false, category: data.category || 'General', frequency: data.frequency
                 }].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()));
             }
             setShowForm(false);

@@ -1,23 +1,78 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { History, ArrowUpRight, Search, Gift, Trash2 } from 'lucide-react';
+import { SkeletonList } from '../../components/ui/Skeleton';
+import { History, ArrowUpRight, Search, Gift, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePoints } from '../../contexts/PointsContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { useQuery } from '../../hooks/useQuery';
 import { format, parseISO } from 'date-fns';
 import './History.css';
 
+/** FIX-14 — rows per page. The whole ledger used to load on every login. */
+const PAGE_SIZE = 50;
+
+interface LedgerRow {
+    rows: {
+        id: string;
+        created_at: string;
+        points: number;
+        source: string;
+        monetary_value: number;
+    }[];
+    total: number;
+}
+
 const HistoryView: React.FC = () => {
-    const { history, lifetimePoints, totalMoneyEarned, currencySymbol, spendPoints, unspentPoints, conversionRate, clearHistory } = usePoints();
+    const { lifetimePoints, totalMoneyEarned, currencySymbol, spendPoints, unspentPoints, conversionRate, clearHistory, entryCount } = usePoints();
+    const { user } = useAuth();
+
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [page, setPage] = useState(0);
 
     const [showRedeemForm, setShowRedeemForm] = useState(false);
     const [redeemDesc, setRedeemDesc] = useState('');
     const [redeemAmount, setRedeemAmount] = useState<number | ''>(''); // This is in points
 
-    const filteredHistory = history.filter(tx =>
-        tx.source.toLowerCase().includes(searchTerm.toLowerCase())
+    // Searching now hits the database rather than an array in memory, so it is
+    // debounced — otherwise every keystroke is a query.
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setDebouncedSearch(searchTerm.trim());
+            setPage(0);
+        }, 250);
+        return () => clearTimeout(t);
+    }, [searchTerm]);
+
+    // FIX-14 — one page at a time, with the count coming back in the same
+    // round trip via PostgREST's exact count.
+    const ledger = useQuery<LedgerRow>(
+        user ? `points:history:${debouncedSearch}:${page}` : null,
+        async () => {
+            let q = supabase
+                .from('points_history')
+                .select('id, created_at, points, source, monetary_value', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+
+            if (debouncedSearch) {
+                // ilike is index-less but the ledger is per-user and small;
+                // correctness first, and it matches the previous behaviour.
+                q = q.ilike('source', `%${debouncedSearch}%`);
+            }
+
+            const { data, error, count } = await q;
+            if (error) throw error;
+            return { rows: data ?? [], total: count ?? 0 };
+        }
     );
+
+    const rows = ledger.data?.rows ?? [];
+    const total = ledger.data?.total ?? 0;
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     const handleRedeem = (e: React.FormEvent) => {
         e.preventDefault();
@@ -59,7 +114,7 @@ const HistoryView: React.FC = () => {
                     <div className="stat-icon bg-primary-light"><History size={24} className="text-primary" /></div>
                     <div>
                         <div className="stat-label">Total Transactions</div>
-                        <div className="stat-value">{history.length}</div>
+                        <div className="stat-value">{entryCount.toLocaleString()}</div>
                     </div>
                 </Card>
                 <Card glass padding="md" className="stat-card">
@@ -125,7 +180,11 @@ const HistoryView: React.FC = () => {
             </div>
 
             <Card padding="none" glass className="history-table-card">
-                {filteredHistory.length > 0 ? (
+                {ledger.loading ? (
+                    <div style={{ padding: '1rem' }}>
+                        <SkeletonList count={6} label="Loading transactions" />
+                    </div>
+                ) : rows.length > 0 ? (
                     <table className="history-table">
                         <thead>
                             <tr>
@@ -136,19 +195,19 @@ const HistoryView: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredHistory.map(tx => {
+                            {rows.map(tx => {
                                 const isPositive = tx.points > 0;
                                 return (
                                     <tr key={tx.id}>
                                         <td className="text-muted">
-                                            {format(parseISO(tx.timestamp), 'MMM d, yyyy • h:mm a')}
+                                            {format(parseISO(tx.created_at), 'MMM d, yyyy • h:mm a')}
                                         </td>
                                         <td className="font-medium">{tx.source}</td>
                                         <td className={isPositive ? 'text-success font-bold' : 'text-danger font-bold'}>
                                             {isPositive ? '+' : ''}{tx.points.toLocaleString()}
                                         </td>
                                         <td className="text-secondary">
-                                            {isPositive ? '+' : ''}{currencySymbol}{tx.monetaryValue.toFixed(2)}
+                                            {isPositive ? '+' : ''}{currencySymbol}{Number(tx.monetary_value).toFixed(2)}
                                         </td>
                                     </tr>
                                 );
@@ -160,11 +219,33 @@ const HistoryView: React.FC = () => {
                         <History size={48} className="text-muted mb-sm" />
                         <h3 className="mb-1">No Transactions Found</h3>
                         <p className="text-secondary">
-                            {searchTerm ? "No transactions match your search." : "Complete tasks and goals to earn your first points!"}
+                            {searchTerm ? "No transactions match your search." : "Complete tasks, habits and goals to earn your first points!"}
                         </p>
                     </div>
                 )}
             </Card>
+
+            {pageCount > 1 && (
+                <div className="history-pager mt-md">
+                    <Button
+                        variant="ghost"
+                        onClick={() => setPage(p => Math.max(0, p - 1))}
+                        disabled={page === 0 || ledger.loading}
+                    >
+                        <ChevronLeft size={16} /> Previous
+                    </Button>
+                    <span className="text-secondary">
+                        Page {page + 1} of {pageCount} · {total.toLocaleString()} transactions
+                    </span>
+                    <Button
+                        variant="ghost"
+                        onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))}
+                        disabled={page >= pageCount - 1 || ledger.loading}
+                    >
+                        Next <ChevronRight size={16} />
+                    </Button>
+                </div>
+            )}
         </div>
     );
 };

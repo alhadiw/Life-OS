@@ -4,6 +4,7 @@ import type { Enums } from '../lib/supabase';
 import { browserTimezone, setUserTimezone } from '../lib/dates';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
+import { invalidate, clearQueryCache } from '../hooks/useQuery';
 
 export type PointsEntryKind = Enums<'points_entry_kind'>;
 
@@ -22,7 +23,9 @@ interface PointsContextType {
     conversionRate: number;
     currencySymbol: string;
     totalMoneyEarned: number;
-    history: PointsTransaction[];
+    /** Ledger row count. ARCH-2 replaced the in-memory ledger, and the History
+     *  page's "transactions" stat was the only thing that needed its length. */
+    entryCount: number;
     addPoints: (points: number, source: string) => Promise<void>;
     removePoints: (points: number, source: string) => Promise<void>;
     spendPoints: (points: number, description: string) => Promise<void>;
@@ -35,35 +38,21 @@ interface PointsContextType {
 const PointsContext = createContext<PointsContextType | undefined>(undefined);
 
 /**
- * Derive every headline total from the ledger (FIX-1).
+ * The ledger is the only source of truth — there is no balance column.
  *
- * The ledger is the only source of truth — there is no balance column — so this
- * must be the *only* place the arithmetic is defined, and the optimistic
- * updates below must apply exactly the same deltas it would. Previously the
- * reload path inferred meaning from the sign of `points`, treating a negative
- * `Reversed:` row as spending. That made lifetime points drop when you
- * un-checked a task and jump back on the next refresh.
+ * ARCH-2 moved the arithmetic that used to live here into Postgres, as
+ * `points_summary()` (supabase/migrations/20260802150300_points_summary.sql).
+ * The split it applies must stay exactly this, because commit() below applies
+ * the same deltas optimistically and the two cannot be allowed to drift:
  *
  *   lifetime = earns + reversals   (reversals are negative, so they cancel out)
  *   unspent  = lifetime - redemptions
  *   money    = the same split, in currency
+ *
+ * This is why FIX-1 mattered: the old reload path inferred meaning from the sign
+ * of `points`, treating a negative `Reversed:` row as spending, so lifetime
+ * points dropped when you un-checked a task and jumped back on refresh.
  */
-const summarise = (transactions: PointsTransaction[]) => {
-    let lifetimePoints = 0;
-    let unspentPoints = 0;
-    let totalMoneyEarned = 0;
-
-    for (const tx of transactions) {
-        unspentPoints += tx.points;
-        if (tx.kind !== 'redemption') {
-            lifetimePoints += tx.points;
-            totalMoneyEarned += tx.monetaryValue;
-        }
-    }
-
-    return { lifetimePoints, unspentPoints, totalMoneyEarned };
-};
-
 export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
     const toast = useToast();
@@ -73,11 +62,15 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [conversionRate, setConversionRateState] = useState(100);
     const [currencySymbol, setCurrencySymbolState] = useState('$');
     const [totalMoneyEarned, setTotalMoneyEarned] = useState(0);
-    const [history, setHistory] = useState<PointsTransaction[]>([]);
+    const [entryCount, setEntryCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user) {
+            // Sign-out. Every cached row belongs to the account that just left,
+            // so the cache goes with it — the same reasoning that keeps Supabase
+            // out of the service worker's runtimeCaching.
+            clearQueryCache();
             setLoading(false);
             return;
         }
@@ -109,29 +102,27 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                 }
 
-                // 2. The ledger
-                const { data: txData, error: txError } = await supabase
-                    .from('points_history')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
+                // 2. The totals — ARCH-2.
+                //
+                // This used to `select('*')` the entire points_history table and
+                // sum it in the loop below. That is on the startup path, so the
+                // cost was paid on every single login and grew with the ledger:
+                // at 10,000 rows it is megabytes of JSON to transfer and parse
+                // before the header can show a number. Indexes do not help, because
+                // the expense is transfer and parse, not lookup.
+                //
+                // points_summary() does the same arithmetic in Postgres and
+                // returns one row.
+                const { data: totals, error: totalsError } = await supabase
+                    .rpc('points_summary')
+                    .single();
 
-                if (txError) throw txError;
+                if (totalsError) throw totalsError;
 
-                const formattedTx: PointsTransaction[] = (txData ?? []).map(tx => ({
-                    id: tx.id,
-                    timestamp: tx.created_at,
-                    points: tx.points,
-                    source: tx.source,
-                    monetaryValue: Number(tx.monetary_value),
-                    kind: tx.kind
-                }));
-
-                const totals = summarise(formattedTx);
-                setLifetimePoints(totals.lifetimePoints);
-                setUnspentPoints(totals.unspentPoints);
-                setTotalMoneyEarned(totals.totalMoneyEarned);
-                setHistory(formattedTx);
+                setLifetimePoints(Number(totals.lifetime_points));
+                setUnspentPoints(Number(totals.unspent_points));
+                setTotalMoneyEarned(Number(totals.lifetime_money));
+                setEntryCount(Number(totals.entry_count));
             } catch (err) {
                 console.error('Error fetching points data:', err);
                 toast.error('Could not load your points. Some totals may be missing — try reloading.');
@@ -160,7 +151,6 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const monetaryValue = points / conversionRate;
         const countsTowardLifetime = kind !== 'redemption';
-        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
         const applyDelta = (sign: 1 | -1) => {
             setUnspentPoints(prev => prev + sign * points);
@@ -171,13 +161,10 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         applyDelta(1);
-        setHistory(prev => [
-            { id: tempId, timestamp: new Date().toISOString(), points, source, monetaryValue, kind },
-            ...prev
-        ]);
+        setEntryCount(prev => prev + 1);
 
         try {
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('points_history')
                 .insert({
                     user_id: user.id,
@@ -185,20 +172,18 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     source,
                     monetary_value: monetaryValue,
                     kind
-                })
-                .select()
-                .single();
+                });
 
             if (error) throw error;
 
-            // Swap the placeholder for the real row.
-            setHistory(prev => prev.map(t => (t.id === tempId
-                ? { ...t, id: data.id, timestamp: data.created_at }
-                : t)));
+            // The History page owns the rows now (FIX-14), so a new entry
+            // invalidates its cached pages rather than being spliced into an
+            // in-memory array here.
+            invalidate('points:history');
         } catch (err) {
             console.error(`Failed to write ${kind} of ${points} points:`, err);
             applyDelta(-1);
-            setHistory(prev => prev.filter(t => t.id !== tempId));
+            setEntryCount(prev => prev - 1);
             toast.error(
                 kind === 'redemption'
                     ? "Couldn't record that redemption — your points are unchanged."
@@ -262,9 +247,9 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             + 'finances, books or lists. It cannot be undone.'
         )) return;
 
-        const previous = { history, lifetimePoints, unspentPoints, totalMoneyEarned };
+        const previous = { entryCount, lifetimePoints, unspentPoints, totalMoneyEarned };
 
-        setHistory([]);
+        setEntryCount(0);
         setLifetimePoints(0);
         setUnspentPoints(0);
         setTotalMoneyEarned(0);
@@ -273,7 +258,7 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (error) {
             console.error('Failed to clear history:', error);
-            setHistory(previous.history);
+            setEntryCount(previous.entryCount);
             setLifetimePoints(previous.lifetimePoints);
             setUnspentPoints(previous.unspentPoints);
             setTotalMoneyEarned(previous.totalMoneyEarned);
@@ -281,6 +266,7 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
+        invalidate('points:history');
         toast.success('Points history cleared.');
     };
 
@@ -291,7 +277,7 @@ export const PointsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             conversionRate,
             currencySymbol,
             totalMoneyEarned,
-            history,
+            entryCount,
             addPoints,
             removePoints,
             spendPoints,

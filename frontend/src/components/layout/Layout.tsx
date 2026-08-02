@@ -2,7 +2,7 @@ import React, { Suspense } from 'react';
 import { Outlet, NavLink } from 'react-router';
 import { Header } from './Header';
 import { PageSkeleton } from '../ui/Skeleton';
-import { LayoutDashboard, CheckSquare, Wallet, BookOpen, Activity, List, History, Settings } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Flame, Wallet, BookOpen, Activity, List, History, Settings } from 'lucide-react';
 import './Layout.css';
 
 export const Layout: React.FC = () => {
@@ -20,6 +20,9 @@ export const Layout: React.FC = () => {
                     </NavLink>
                     <NavLink to="/tasks" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                         <CheckSquare size={20} /> Tasks & Goals
+                    </NavLink>
+                    <NavLink to="/habits" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+                        <Flame size={20} /> Habits
                     </NavLink>
                     <NavLink to="/finance" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                         <Wallet size={20} /> Finance Hub
@@ -65,6 +68,9 @@ export const Layout: React.FC = () => {
                 </NavLink>
                 <NavLink to="/tasks" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                     <CheckSquare size={24} />
+                </NavLink>
+                <NavLink to="/habits" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+                    <Flame size={24} />
                 </NavLink>
                 <NavLink to="/finance" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
                     <Wallet size={24} />

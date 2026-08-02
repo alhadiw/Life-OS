@@ -1,0 +1,333 @@
+/* HAB-1..4, HAB-6 — Habits page. */
+
+.habits-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.habit-card {
+    transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.habit-card.completed {
+    border-style: dashed;
+}
+
+.habit-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Same interaction language as the task checkbox (MOT-4) — press, pop, ring —
+   but tinted with the habit's own colour rather than the global success green. */
+.habit-checkbox {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    border: 2px solid var(--text-muted);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.habit-checkbox:hover:not(:disabled) {
+    border-color: var(--habit-color, var(--primary-color));
+    background: color-mix(in srgb, var(--habit-color, var(--primary-color)) 12%, transparent);
+}
+
+.habit-checkbox:active:not(:disabled) {
+    transform: scale(0.88);
+}
+
+.habit-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--habit-color, var(--primary-color)) 40%, transparent);
+}
+
+.habit-checkbox:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.habit-checkbox.checked {
+    background: var(--habit-color, var(--primary-color));
+    border-color: var(--habit-color, var(--primary-color));
+    animation: habit-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.habit-checkbox.checked::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 10px;
+    border: 2px solid var(--habit-color, var(--primary-color));
+    animation: habit-ring 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+}
+
+@keyframes habit-pop {
+    0% { transform: scale(0.8); }
+    55% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+@keyframes habit-ring {
+    0% { opacity: 0.85; transform: scale(1); }
+    100% { opacity: 0; transform: scale(2); }
+}
+
+.habit-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.habit-title {
+    font-size: 1.0625rem;
+    font-weight: 500;
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+}
+
+.habit-card.completed .habit-title {
+    color: var(--text-secondary);
+}
+
+.habit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.habit-schedule {
+    color: var(--text-secondary);
+}
+
+.habit-rest,
+.habit-frozen,
+.habit-week {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-hover);
+}
+
+.habit-frozen {
+    color: #7DD3FC;
+    background: rgba(125, 211, 252, 0.12);
+}
+
+.habit-week.met {
+    color: var(--success-color);
+    background: rgba(16, 185, 129, 0.12);
+}
+
+.habit-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.habit-streak {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.habit-streak strong {
+    font-weight: 700;
+}
+
+.habit-points {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.habit-actions {
+    display: flex;
+    gap: 0.125rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    flex-shrink: 0;
+}
+
+.habit-card:hover .habit-actions,
+.habit-card:focus-within .habit-actions {
+    opacity: 1;
+}
+
+.habit-actions .icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.icon-btn .rotated {
+    transform: rotate(180deg);
+    transition: transform 0.2s ease;
+}
+
+.habit-history {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    /* Each expanded habit tints its own heatmap. */
+    --habit-heatmap-color: var(--primary-color);
+}
+
+/* --- form bits --- */
+
+.field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.color-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.color-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.color-dot:hover {
+    transform: scale(1.1);
+}
+
+.color-dot.selected {
+    border-color: var(--text-primary);
+    transform: scale(1.1);
+}
+
+.schedule-kinds {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.schedule-kind {
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.schedule-kind:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+}
+
+.schedule-kind.active {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.weekday-row {
+    display: flex;
+    gap: 0.375rem;
+}
+
+.weekday {
+    flex: 1;
+    aspect-ratio: 1;
+    max-width: 44px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.weekday.active {
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+    color: white;
+}
+
+.form-hint {
+    font-size: 0.75rem;
+    margin: 0.375rem 0 0 0;
+}
+
+@media (max-width: 768px) {
+
+    /* No hover on touch, so the actions must always be visible. */
+    .habit-actions {
+        opacity: 1;
+    }
+
+    .habit-row {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .habit-main {
+        flex-basis: calc(100% - 4rem);
+    }
+
+    .habit-actions {
+        flex-basis: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* Keep the state change, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+
+    .habit-checkbox,
+    .habit-checkbox.checked {
+        animation: none;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .habit-checkbox:active:not(:disabled) {
+        transform: none;
+    }
+
+    .habit-checkbox.checked::before {
+        display: none;
+    }
+
+    .color-dot:hover,
+    .color-dot.selected {
+        transform: none;
+    }
+
+    .icon-btn .rotated {
+        transition: none;
+    }
+}

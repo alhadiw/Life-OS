@@ -4,7 +4,7 @@ import './FullscreenLoader.css';
 /**
  * Full-viewport branded loader.
  *
- * Two callers: the once-per-day `useAutoReset` sync, and the Suspense boundary
+ * One caller since ARCH-1 deleted the once-per-day reset sync: the Suspense boundary
  * around the routes that render outside the app shell (Login, the password-reset
  * landing). Both are cases where there is no layout to hold a skeleton in place,
  * so the honest thing is a spinner and a sentence.

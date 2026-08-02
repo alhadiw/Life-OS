@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      bill_payments: {
+        Row: {
+          amount: number | null
+          bill_id: string
+          created_at: string
+          id: string
+          period_month: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number | null
+          bill_id: string
+          created_at?: string
+          id?: string
+          period_month: string
+          user_id: string
+        }
+        Update: {
+          amount?: number | null
+          bill_id?: string
+          created_at?: string
+          id?: string
+          period_month?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_payments_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "finance_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_payments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       books: {
         Row: {
           author: string
@@ -284,6 +326,48 @@ export type Database = {
           },
         ]
       }
+      goal_completions: {
+        Row: {
+          created_at: string
+          goal_id: string
+          id: string
+          period_start: string
+          points_awarded: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal_id: string
+          id?: string
+          period_start: string
+          points_awarded?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal_id?: string
+          id?: string
+          period_start?: string
+          points_awarded?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_completions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
           category: string | null
@@ -324,6 +408,149 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "goals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habit_completions: {
+        Row: {
+          created_at: string
+          habit_id: string
+          id: string
+          local_date: string
+          points_awarded: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          habit_id: string
+          id?: string
+          local_date: string
+          points_awarded?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          habit_id?: string
+          id?: string
+          local_date?: string
+          points_awarded?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_completions_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habit_freezes: {
+        Row: {
+          created_at: string
+          habit_id: string
+          id: string
+          local_date: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          habit_id: string
+          id?: string
+          local_date: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          habit_id?: string
+          id?: string
+          local_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_freezes_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_freezes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          archived: boolean
+          category: string | null
+          color: string | null
+          created_at: string
+          freeze_budget: number
+          icon: string | null
+          id: string
+          points: number
+          schedule_interval_days: number | null
+          schedule_kind: Database["public"]["Enums"]["habit_schedule_kind"]
+          schedule_times_per_week: number | null
+          schedule_weekdays: number[] | null
+          start_date: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          archived?: boolean
+          category?: string | null
+          color?: string | null
+          created_at?: string
+          freeze_budget?: number
+          icon?: string | null
+          id?: string
+          points?: number
+          schedule_interval_days?: number | null
+          schedule_kind?: Database["public"]["Enums"]["habit_schedule_kind"]
+          schedule_times_per_week?: number | null
+          schedule_weekdays?: number[] | null
+          start_date?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          archived?: boolean
+          category?: string | null
+          color?: string | null
+          created_at?: string
+          freeze_budget?: number
+          icon?: string | null
+          id?: string
+          points?: number
+          schedule_interval_days?: number | null
+          schedule_kind?: Database["public"]["Enums"]["habit_schedule_kind"]
+          schedule_times_per_week?: number | null
+          schedule_weekdays?: number[] | null
+          start_date?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habits_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -444,6 +671,48 @@ export type Database = {
         }
         Relationships: []
       }
+      task_completions: {
+        Row: {
+          created_at: string
+          id: string
+          local_date: string
+          points_awarded: number
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          local_date: string
+          points_awarded?: number
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          local_date?: string
+          points_awarded?: number
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           category: string | null
@@ -451,6 +720,7 @@ export type Database = {
           created_at: string
           due_date: string | null
           id: string
+          inbox: boolean
           points: number
           title: string
           user_id: string
@@ -461,7 +731,8 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id?: string
-          points: number
+          inbox?: boolean
+          points?: number
           title: string
           user_id: string
         }
@@ -471,6 +742,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           id?: string
+          inbox?: boolean
           points?: number
           title?: string
           user_id?: string
@@ -525,11 +797,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      points_summary: {
+        Args: never
+        Returns: {
+          entry_count: number
+          lifetime_money: number
+          lifetime_points: number
+          unspent_money: number
+          unspent_points: number
+        }[]
+      }
     }
     Enums: {
       book_status: "want_to_read" | "reading" | "finished"
       goal_period: "weekly" | "monthly"
+      habit_schedule_kind:
+        | "daily"
+        | "weekdays"
+        | "times_per_week"
+        | "every_n_days"
       intensity_level: "Light" | "Moderate" | "Intense"
       points_entry_kind: "earn" | "reversal" | "redemption"
     }
@@ -661,6 +947,12 @@ export const Constants = {
     Enums: {
       book_status: ["want_to_read", "reading", "finished"],
       goal_period: ["weekly", "monthly"],
+      habit_schedule_kind: [
+        "daily",
+        "weekdays",
+        "times_per_week",
+        "every_n_days",
+      ],
       intensity_level: ["Light", "Moderate", "Intense"],
       points_entry_kind: ["earn", "reversal", "redemption"],
     },

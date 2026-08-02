@@ -3,14 +3,14 @@ import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
-import { todayISO, addDays, startOfWeekISO, endOfMonthISO } from '../../lib/dates';
+import { todayISO, addDays, startOfWeekISO, startOfMonthISO, endOfMonthISO } from '../../lib/dates';
 import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { SkeletonList } from '../../components/ui/Skeleton';
-import { Plus, Check, CheckSquare, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Check, CheckSquare, Trash2, Edit2, Inbox, CalendarClock } from 'lucide-react';
 import './Tasks.css';
 
 type TaskTier = 'daily' | 'weekly' | 'monthly';
@@ -25,6 +25,19 @@ interface Task {
     dueDate?: string;
 }
 
+/**
+ * ARCH-1 — the period a completion is filed under.
+ *
+ * Daily tasks are keyed on today's local date; a weekly goal on the Monday of
+ * this week; a monthly goal on the 1st. "Completed" is then the existence of a
+ * row with that key, which is why nothing has to be cleared on a schedule any
+ * more.
+ */
+const periodKeyFor = (tier: TaskTier, today: string): string =>
+    tier === 'daily' ? today
+        : tier === 'weekly' ? startOfWeekISO(today)
+            : startOfMonthISO(today);
+
 const TasksView: React.FC = () => {
     const { addPoints, removePoints } = usePoints();
     const { user } = useAuth();
@@ -35,7 +48,11 @@ const TasksView: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const [showForm, setShowForm] = useState(false);
-    const [newTask, setNewTask] = useState({ title: '', points: 50, category: 'Personal' });
+    const [newTask, setNewTask] = useState({ title: '', points: 50, category: 'Personal', dueDate: '' });
+
+    // TSK-3 — quick capture. One field, always on screen, no decisions.
+    const [capture, setCapture] = useState('');
+    const [inbox, setInbox] = useState<Task[]>([]);
 
     // Edit state
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -43,19 +60,43 @@ const TasksView: React.FC = () => {
     useEffect(() => {
         if (user) {
             fetchTasks(activeTab);
+            fetchInbox();
         }
     }, [user, activeTab]);
+
+    /** TSK-3 — untriaged captures, independent of the active tab. */
+    const fetchInbox = async () => {
+        const { data, error } = await supabase
+            .from('tasks').select('*').eq('inbox', true)
+            .order('created_at', { ascending: false });
+        if (error) return;
+        setInbox((data ?? []).map(t => ({
+            id: t.id, title: t.title, points: t.points,
+            category: t.category || 'General', tier: 'daily' as TaskTier,
+            completed: false, dueDate: t.due_date ?? undefined
+        })));
+    };
 
     const fetchTasks = async (tier: TaskTier) => {
         setLoading(true);
         try {
+            const today = todayISO();
+
             if (tier === 'daily') {
-                const { data, error } = await supabase
-                    .from('tasks')
-                    .select('*')
-                    .order('created_at', { ascending: false });
+                // Two reads instead of one: the tasks, and which of them have a
+                // completion row for today. `tasks.completed` is still in the
+                // table (DESIGN.md §11 keeps it for a release) but is no longer
+                // read — it is the column that used to be wiped nightly.
+                const [{ data, error }, { data: comps, error: compError }] = await Promise.all([
+                    supabase.from('tasks').select('*').eq('inbox', false)
+                        .order('created_at', { ascending: false }),
+                    supabase.from('task_completions').select('task_id').eq('local_date', today)
+                ]);
 
                 if (error) throw error;
+                if (compError) throw compError;
+
+                const done = new Set((comps ?? []).map(c => c.task_id));
                 if (data) {
                     setTasks(data.map(t => ({
                         id: t.id,
@@ -63,18 +104,22 @@ const TasksView: React.FC = () => {
                         points: t.points,
                         category: t.category || 'General',
                         tier: 'daily',
-                        completed: t.completed,
+                        completed: done.has(t.id),
                         dueDate: t.due_date ?? undefined
                     })));
                 }
             } else {
-                const { data, error } = await supabase
-                    .from('goals')
-                    .select('*')
-                    .eq('period', tier)
-                    .order('created_at', { ascending: false });
+                const periodStart = periodKeyFor(tier, today);
+                const [{ data, error }, { data: comps, error: compError }] = await Promise.all([
+                    supabase.from('goals').select('*').eq('period', tier)
+                        .order('created_at', { ascending: false }),
+                    supabase.from('goal_completions').select('goal_id').eq('period_start', periodStart)
+                ]);
 
                 if (error) throw error;
+                if (compError) throw compError;
+
+                const done = new Set((comps ?? []).map(c => c.goal_id));
                 if (data) {
                     setTasks(data.map(g => ({
                         id: g.id,
@@ -82,7 +127,7 @@ const TasksView: React.FC = () => {
                         points: g.points,
                         category: g.category || 'General',
                         tier: g.period as TaskTier,
-                        completed: g.completed,
+                        completed: done.has(g.id),
                         dueDate: g.target_date
                     })));
                 }
@@ -95,28 +140,39 @@ const TasksView: React.FC = () => {
     };
 
     const toggleTaskCompletion = async (task: Task, origin?: CelebrationOrigin) => {
+        if (!user) return;
         const newCompletedStatus = !task.completed;
+        const today = todayISO();
+        const periodStart = periodKeyFor(task.tier, today);
 
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
 
-        // Persist the checkbox first. This used to award the points *before*
-        // the update and then, on failure, revert only the checkbox — leaving
-        // the ledger paying out for a task the database still had as open.
-        const table = task.tier === 'daily' ? 'tasks' : 'goals';
-        const { error } = await supabase
-            .from(table)
-            .update({ completed: newCompletedStatus })
-            .eq('id', task.id);
+        // ARCH-1 — completing writes a row, un-completing deletes it. There is no
+        // boolean to flip and nothing to reset later, so the record of *when*
+        // this was done survives instead of being cleared overnight.
+        const error = newCompletedStatus
+            ? (task.tier === 'daily'
+                ? (await supabase.from('task_completions').insert({
+                    user_id: user.id, task_id: task.id, local_date: periodStart, points_awarded: task.points
+                })).error
+                : (await supabase.from('goal_completions').insert({
+                    user_id: user.id, goal_id: task.id, period_start: periodStart, points_awarded: task.points
+                })).error)
+            : (task.tier === 'daily'
+                ? (await supabase.from('task_completions').delete()
+                    .eq('task_id', task.id).eq('local_date', periodStart)).error
+                : (await supabase.from('goal_completions').delete()
+                    .eq('goal_id', task.id).eq('period_start', periodStart)).error);
 
         if (error) {
-            console.error('Error updating task:', error);
+            console.error('Error updating task completion:', error);
             setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
             toast.error("Couldn't save that — your points are unchanged.");
             return;
         }
 
         if (newCompletedStatus) {
-            // MOT-4. Fires only after the update above came back clean, for the
+            // MOT-4. Fires only after the write above came back clean, for the
             // same reason the points do — confetti over a write that failed
             // would be celebrating something that didn't happen.
             celebrate(origin);
@@ -136,14 +192,18 @@ const TasksView: React.FC = () => {
                     user_id: user.id,
                     title: newTask.title,
                     points: newTask.points,
-                    category: newTask.category
+                    category: newTask.category,
+                    // TSK-4 — the column existed since day one and was never
+                    // written, which is what left FIX-7's dashboard filter inert.
+                    due_date: newTask.dueDate || null
                 }).select().single();
 
                 if (error) throw error;
                 if (data) {
                     const task: Task = {
                         id: data.id, title: data.title, points: data.points,
-                        category: data.category || 'General', tier: 'daily', completed: false
+                        category: data.category || 'General', tier: 'daily', completed: false,
+                        dueDate: data.due_date ?? undefined
                     };
                     setTasks(prev => [task, ...prev]);
                 }
@@ -172,7 +232,7 @@ const TasksView: React.FC = () => {
                 }
             }
 
-            setNewTask({ title: '', points: activeTab === 'daily' ? 25 : activeTab === 'weekly' ? 200 : 1000, category: 'Personal' });
+            setNewTask({ title: '', points: activeTab === 'daily' ? 25 : activeTab === 'weekly' ? 200 : 1000, category: 'Personal', dueDate: '' });
             setShowForm(false);
         } catch (error) {
             console.error('Error creating task:', error);
@@ -221,6 +281,45 @@ const TasksView: React.FC = () => {
         }
     };
 
+    /**
+     * TSK-3 — capture and triage.
+     *
+     * An inbox item is a normal task row with `inbox = true`, so triage is a
+     * flag flip rather than a copy between tables, and nothing else in the app
+     * has to learn about a second kind of thing.
+     */
+    const handleCapture = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const title = capture.trim();
+        if (!title || !user) return;
+
+        setCapture('');
+        const { error } = await supabase.from('tasks').insert({
+            user_id: user.id, title, inbox: true
+        });
+
+        if (error) {
+            toast.error("Couldn't capture that — try again.");
+            setCapture(title);
+            return;
+        }
+        fetchInbox();
+    };
+
+    const triageItem = async (item: Task) => {
+        const { error } = await supabase.from('tasks').update({ inbox: false }).eq('id', item.id);
+        if (error) return toast.error("Couldn't move that out of the inbox.");
+        setInbox(prev => prev.filter(i => i.id !== item.id));
+        if (activeTab === 'daily') fetchTasks('daily');
+        toast.success(`"${item.title}" moved to Daily Tasks.`);
+    };
+
+    const discardItem = async (item: Task) => {
+        const { error } = await supabase.from('tasks').delete().eq('id', item.id);
+        if (error) return toast.error("Couldn't delete that.");
+        setInbox(prev => prev.filter(i => i.id !== item.id));
+    };
+
     const handleTabChange = (tier: TaskTier) => {
         setActiveTab(tier);
         setNewTask(prev => ({
@@ -248,6 +347,48 @@ const TasksView: React.FC = () => {
                     <Plus size={18} /> Add {activeTab === 'daily' ? 'Task' : 'Goal'}
                 </Button>
             </div>
+
+            {/* TSK-3 — always reachable, above the tabs, costs one field. */}
+            <form onSubmit={handleCapture} className="capture-bar mb-md">
+                <Inbox size={18} className="text-muted capture-icon" />
+                <input
+                    type="text"
+                    className="capture-input"
+                    placeholder="Capture anything — sort it out later…"
+                    value={capture}
+                    onChange={e => setCapture(e.target.value)}
+                    aria-label="Quick capture"
+                />
+                {capture.trim() && <Button type="submit" variant="ghost">Add</Button>}
+            </form>
+
+            {inbox.length > 0 && (
+                <Card glass className="mb-lg inbox-card">
+                    <div className="inbox-head">
+                        <h3><Inbox size={16} /> Inbox</h3>
+                        <span className="text-secondary">{inbox.length} to triage</span>
+                    </div>
+                    <div className="inbox-items">
+                        {inbox.map(item => (
+                            <div key={item.id} className="inbox-item">
+                                <span className="inbox-title">{item.title}</span>
+                                <div className="inbox-actions">
+                                    <Button variant="ghost" onClick={() => triageItem(item)}>
+                                        Keep as task
+                                    </Button>
+                                    <button
+                                        className="icon-btn hover-danger"
+                                        title="Discard"
+                                        onClick={() => discardItem(item)}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
 
             <div className="tabs mb-lg">
                 <button className={`tab ${activeTab === 'daily' ? 'active' : ''}`} onClick={() => handleTabChange('daily')}>Daily Tasks</button>
@@ -299,6 +440,18 @@ const TasksView: React.FC = () => {
                                 onChange={e => setNewTask({ ...newTask, category: e.target.value })}
                                 placeholder="e.g. Health, Work, Personal"
                             />
+                        </div>
+                        {/* TSK-4 — only daily tasks carry a due date; goals get
+                            their period's end date automatically. */}
+                        {activeTab === 'daily' && (
+                            <Input
+                                type="date"
+                                label="Due date (optional)"
+                                value={newTask.dueDate}
+                                onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
+                            />
+                        )}
+                        <div style={{ display: 'none' }}>
                         </div>
                         <div className="form-actions mt-md">
                             <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
@@ -414,6 +567,18 @@ const TaskCard: React.FC<{
                     <h4 className="task-title">{task.title}</h4>
                     <div className="task-meta mt-1">
                         <span className="badge badge-neutral">{task.category}</span>
+                        {/* TSK-4 — overdue surfacing. Only meaningful now that
+                            something actually writes due_date. */}
+                        {task.dueDate && !isCompleted && (
+                            <span className={`badge due-badge ${task.dueDate < todayISO() ? 'overdue' : ''}`}>
+                                <CalendarClock size={11} />
+                                {task.dueDate < todayISO()
+                                    ? 'Overdue'
+                                    : task.dueDate === todayISO()
+                                        ? 'Due today'
+                                        : `Due ${task.dueDate.slice(5)}`}
+                            </span>
+                        )}
                     </div>
                 </div>
 

@@ -84,3 +84,18 @@
 .font-bold {
     font-weight: 700;
 }
+/* FIX-14 — pager. Only rendered when the ledger exceeds one page. */
+.history-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+}
+
+@media (max-width: 560px) {
+    .history-pager {
+        justify-content: center;
+    }
+}

@@ -5,7 +5,7 @@ import { usePoints } from '../../contexts/PointsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
-import { todayISO, addDays, startOfWeekISO } from '../../lib/dates';
+import { todayISO, addDays, startOfWeekISO, startOfMonthISO } from '../../lib/dates';
 import { celebrate, originFromElement, type CelebrationOrigin } from '../../lib/celebrate';
 import { SkeletonGrid, SkeletonList, SkeletonStats } from '../../components/ui/Skeleton';
 import { Check, WalletCards, BookOpen, Activity, Plus, Gift, List } from 'lucide-react';
@@ -48,28 +48,44 @@ const DashboardView: React.FC = () => {
             // completed ones included. A task belongs to today if it has no due
             // date (the daily-habit case, reset each morning) or is due today or
             // earlier; anything scheduled for a future day isn't today's work.
-            const { data: tasksData } = await supabase
-                .from('tasks')
-                .select('*')
-                .or(`due_date.is.null,due_date.lte.${today}`)
-                .order('created_at', { ascending: false });
+            // Inbox captures (TSK-3) are deliberately excluded — they are
+            // untriaged notes, not today's commitments.
+            const [{ data: tasksData }, { data: taskComps }] = await Promise.all([
+                supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('inbox', false)
+                    .or(`due_date.is.null,due_date.lte.${today}`)
+                    .order('created_at', { ascending: false }),
+                supabase.from('task_completions').select('task_id').eq('local_date', today)
+            ]);
+
+            const doneToday = new Set((taskComps ?? []).map(c => c.task_id));
 
             if (tasksData) {
                 setDailyTasks(
                     tasksData
-                        .map(t => ({ id: t.id, title: t.title, points: t.points, completed: t.completed }))
+                        .map(t => ({ id: t.id, title: t.title, points: t.points, completed: doneToday.has(t.id) }))
                         // What's still outstanding matters more than what's done.
                         .sort((a, b) => Number(a.completed) - Number(b.completed))
                 );
             }
 
             // 2. Fetch Goals Summary
-            const { data: goalsData } = await supabase.from('goals').select('period, completed');
+            // ARCH-1 — a goal is complete when a row exists for the current
+            // period, not when a boolean that gets wiped weekly says so.
+            const [{ data: goalsData }, { data: goalComps }] = await Promise.all([
+                supabase.from('goals').select('id, period'),
+                supabase.from('goal_completions')
+                    .select('goal_id, period_start')
+                    .in('period_start', [startOfWeekISO(today), startOfMonthISO(today)])
+            ]);
+            const doneGoals = new Set((goalComps ?? []).map(c => c.goal_id));
             if (goalsData) {
                 const weekly = goalsData.filter(g => g.period === 'weekly');
                 const monthly = goalsData.filter(g => g.period === 'monthly');
-                setWeeklyGoals({ total: weekly.length, completed: weekly.filter(g => g.completed).length });
-                setMonthlyGoals({ total: monthly.length, completed: monthly.filter(g => g.completed).length });
+                setWeeklyGoals({ total: weekly.length, completed: weekly.filter(g => doneGoals.has(g.id)).length });
+                setMonthlyGoals({ total: monthly.length, completed: monthly.filter(g => doneGoals.has(g.id)).length });
             }
 
             // 3. Fetch Finance Snapshot
@@ -152,12 +168,12 @@ const DashboardView: React.FC = () => {
                 title: quickTaskText,
                 points: 25,
                 category: 'General',
-                completed: false
+                inbox: false
             }).select().single();
 
             if (error) throw error;
             if (data) {
-                setDailyTasks([{ id: data.id, title: data.title, points: data.points, completed: data.completed }, ...dailyTasks]);
+                setDailyTasks([{ id: data.id, title: data.title, points: data.points, completed: false }, ...dailyTasks]);
             }
             setQuickTaskText('');
         } catch (e) {
@@ -182,16 +198,20 @@ const DashboardView: React.FC = () => {
     };
 
     const toggleTask = async (task: any, origin?: CelebrationOrigin) => {
+        if (!user) return;
         const newCompletedStatus = !task.completed;
 
         setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompletedStatus } : t));
 
         // Persist the checkbox before awarding points, so a failed write can't
         // leave the ledger crediting a task the database still thinks is open.
-        const { error } = await supabase
-            .from('tasks')
-            .update({ completed: newCompletedStatus })
-            .eq('id', task.id);
+        // ARCH-1 — same rule as the Tasks page: the row is the truth.
+        const { error } = newCompletedStatus
+            ? await supabase.from('task_completions').insert({
+                user_id: user.id, task_id: task.id, local_date: todayISO(), points_awarded: task.points
+            })
+            : await supabase.from('task_completions').delete()
+                .eq('task_id', task.id).eq('local_date', todayISO());
 
         if (error) {
             console.error(error);

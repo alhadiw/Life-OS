@@ -8,7 +8,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { InstallPrompt } from './components/InstallPrompt';
 import { FullscreenLoader } from './components/ui/FullscreenLoader';
-import { useAutoReset } from './hooks/useAutoReset';
 
 // PWA-5 — one chunk per route instead of one bundle for the whole app.
 //
@@ -22,6 +21,7 @@ import { useAutoReset } from './hooks/useAutoReset';
 // so it stays small and the shell renders around it immediately either way.
 const DashboardView = lazy(() => import('./pages/Dashboard/Dashboard'));
 const TasksView = lazy(() => import('./pages/Tasks/Tasks'));
+const HabitsView = lazy(() => import('./pages/Habits/Habits'));
 const FinanceView = lazy(() => import('./pages/Finance/Finance'));
 const BooksView = lazy(() => import('./pages/Books/Books'));
 const ExerciseView = lazy(() => import('./pages/Exercise/Exercise'));
@@ -33,14 +33,16 @@ const UpdatePasswordView = lazy(() => import('./pages/Auth/UpdatePassword'));
 
 function AppRoutes() {
   const { user } = useAuth();
-  const { isResetting } = useAutoReset();
 
-  if (user && isResetting) {
-    return <FullscreenLoader message="Syncing your goals…" />;
-  }
-
-  // Check if we are physically on the update-password route
-  // We need to render the router so it can match the path.
+  // ARCH-1 — `useAutoReset` used to run here before anything rendered, showing a
+  // "Syncing your goals…" spinner while it cleared `tasks.completed` daily,
+  // `goals.completed` weekly/monthly and rolled every monthly bill forward.
+  //
+  // It is gone. "Done" is now the existence of a completion row for a given
+  // local date, so nothing needs clearing on a schedule: no launch-time write
+  // storm, no reset stamps in auth metadata to drift out of sync, and — the
+  // actual point — no destruction of the history that streaks and heatmaps are
+  // computed from. The app now renders straight into the router.
 
   return (
     // This boundary only catches the routes that render *outside* the app
@@ -56,6 +58,7 @@ function AppRoutes() {
             <>
               <Route index element={<DashboardView />} />
               <Route path="tasks" element={<TasksView />} />
+              <Route path="habits" element={<HabitsView />} />
               <Route path="finance" element={<FinanceView />} />
               <Route path="books" element={<BooksView />} />
               <Route path="exercise" element={<ExerciseView />} />
