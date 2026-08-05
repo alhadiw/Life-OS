@@ -1,0 +1,116 @@
+/* Per-habit month view. Cells are ~4x the area of a heatmap square, which is
+   what makes it readable on a phone. */
+
+.month-cal {
+    max-width: 340px;
+}
+
+.month-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.month-cal-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+}
+
+.month-cal-title strong {
+    font-size: 0.9375rem;
+}
+
+.month-cal-title .text-muted {
+    font-size: 0.6875rem;
+}
+
+.month-cal-head .icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.month-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.month-cal-weekday {
+    text-align: center;
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding-bottom: 0.25rem;
+}
+
+.month-cal-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    background: var(--surface-hover);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* Days from the neighbouring months — present so the grid keeps its shape,
+   but they are not this month's business. */
+.month-cal-day.outside {
+    opacity: 0.25;
+}
+
+.month-cal-day.state-done {
+    background: var(--month-color);
+    color: #fff;
+    font-weight: 700;
+    box-shadow: none;
+}
+
+.month-cal-day.state-frozen {
+    background: rgba(125, 211, 252, 0.2);
+    color: #7DD3FC;
+    box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.45);
+}
+
+/* Not scheduled — must not read as a failure. */
+.month-cal-day.state-rest {
+    background: transparent;
+    color: var(--text-muted);
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+/* Hasn't happened yet. */
+.month-cal-day.state-future {
+    background: transparent;
+    color: var(--text-muted);
+    opacity: 0.35;
+    box-shadow: none;
+}
+
+.month-cal-day.state-missed {
+    background: var(--surface-hover);
+    color: var(--text-muted);
+}
+
+.month-cal-day.is-today {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+@media (max-width: 640px) {
+    .month-cal {
+        max-width: none;
+    }
+
+    .month-cal-day {
+        font-size: 0.8125rem;
+    }
+}

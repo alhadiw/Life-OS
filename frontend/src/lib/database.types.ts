@@ -722,6 +722,7 @@ export type Database = {
           id: string
           inbox: boolean
           points: number
+          recurring: boolean
           title: string
           user_id: string
         }
@@ -733,6 +734,7 @@ export type Database = {
           id?: string
           inbox?: boolean
           points?: number
+          recurring?: boolean
           title: string
           user_id: string
         }
@@ -744,6 +746,7 @@ export type Database = {
           id?: string
           inbox?: boolean
           points?: number
+          recurring?: boolean
           title?: string
           user_id?: string
         }

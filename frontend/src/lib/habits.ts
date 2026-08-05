@@ -101,7 +101,7 @@ export const computeStreak = (
     // `times_per_week` has no per-day expectation, so a day-by-day chain is
     // meaningless. Count consecutive weeks that hit their target instead.
     if (habit.schedule_kind === 'times_per_week') {
-        return weeklyStreak(habit, completed, todayISOValue);
+        return weeklyStreak(habit, completed, frozen, todayISOValue);
     }
 
     let current = 0;
@@ -138,8 +138,22 @@ export const computeStreak = (
     return { current, longest };
 };
 
-/** Consecutive weeks meeting the target, for `times_per_week` habits. */
-const weeklyStreak = (habit: Habit, completed: Set<string>, todayISOValue: string): StreakResult => {
+/**
+ * Consecutive weeks meeting the target, for `times_per_week` habits.
+ *
+ * Freezes count toward the week's target. They used to be ignored entirely —
+ * `frozen` was never even passed in — so freezing a day on an N-times-per-week
+ * habit spent budget from the monthly allowance and had no effect on the streak
+ * whatsoever. A freeze is a day you deliberately bought out of, so it should
+ * carry the same weight here as it does on a daily habit, where it stops the
+ * chain from breaking.
+ */
+const weeklyStreak = (
+    habit: Habit,
+    completed: Set<string>,
+    frozen: Set<string>,
+    todayISOValue: string
+): StreakResult => {
     const target = habit.schedule_times_per_week ?? 1;
     let current = 0;
     let longest = 0;
@@ -152,11 +166,14 @@ const weeklyStreak = (habit: Habit, completed: Set<string>, todayISOValue: strin
 
     while (week >= firstWeek) {
         let done = 0;
+        let excused = 0;
         for (let i = 0; i < 7; i++) {
-            if (completed.has(addDays(week, i))) done++;
+            const day = addDays(week, i);
+            if (completed.has(day)) done++;
+            else if (frozen.has(day)) excused++;
         }
 
-        if (done >= target) {
+        if (done + excused >= target) {
             run++;
             if (run > longest) longest = run;
             if (currentStillLive) current = run;

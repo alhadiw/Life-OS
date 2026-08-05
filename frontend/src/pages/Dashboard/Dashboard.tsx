@@ -42,7 +42,7 @@ const DashboardView: React.FC = () => {
     const dash = useQuery(user ? `dashboard:${today}` : null, async () => {
         const period = startOfMonthISO(today);
 
-        const [tasksData, taskComps, goalsData, goalComps, billsData, paidThisMonth,
+        const [tasksData, taskComps, allTaskComps, goalsData, goalComps, billsData, paidThisMonth,
             savingsData, invData, workoutsThisWeek, listsData] = await Promise.all([
                 // 1. Today's tasks (FIX-7). A task belongs to today if it has no
                 // due date or is due today or earlier. Inbox captures (TSK-3) are
@@ -52,6 +52,9 @@ const DashboardView: React.FC = () => {
                     .order('created_at', { ascending: false })),
                 fromSupabase(supabase.from('task_completions').select('task_id')
                     .eq('local_date', today)),
+                // Finished one-off tasks are gone for good; only recurring ones
+                // come back. Matches the Tasks page rule.
+                fromSupabase(supabase.from('task_completions').select('task_id')),
                 // 2. Goals — complete when a row exists for the current period.
                 fromSupabase(supabase.from('goals').select('id, period')),
                 fromSupabase(supabase.from('goal_completions').select('goal_id, period_start')
@@ -81,6 +84,7 @@ const DashboardView: React.FC = () => {
             .select('target_value').eq('period', 'weekly').limit(1).maybeSingle();
 
         const doneToday = new Set(taskComps.map(c => c.task_id));
+        const everDone = new Set(allTaskComps.map(c => c.task_id));
         const doneGoals = new Set(goalComps.map(c => c.goal_id));
         const paid = new Set(paidThisMonth.map(p => p.bill_id));
         const weekly = goalsData.filter(g => g.period === 'weekly');
@@ -88,6 +92,7 @@ const DashboardView: React.FC = () => {
 
         return {
             dailyTasks: tasksData
+                .filter(t => t.recurring || !everDone.has(t.id) || doneToday.has(t.id))
                 .map(t => ({ id: t.id, title: t.title, points: t.points, completed: doneToday.has(t.id) }))
                 // What's still outstanding matters more than what's done.
                 .sort((a, b) => Number(a.completed) - Number(b.completed)),

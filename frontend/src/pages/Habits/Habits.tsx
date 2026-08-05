@@ -21,6 +21,7 @@ import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { SkeletonList } from '../../components/ui/Skeleton';
 import { Heatmap } from '../../components/Heatmap';
+import { MonthCalendar } from '../../components/MonthCalendar';
 import { Plus, Check, Flame, Snowflake, Trash2, Edit2, Archive, ArchiveRestore, ChevronDown } from 'lucide-react';
 import './Habits.css';
 
@@ -359,9 +360,6 @@ const HabitsView: React.FC = () => {
                         const color = habit.color ?? COLORS[0];
                         const isOpen = expanded === habit.id;
 
-                        const values = new Map<string, number>();
-                        for (const d of completed) values.set(d, 1);
-
                         return (
                             <Card key={habit.id} className={`habit-card ${doneToday ? 'completed' : ''}`}>
                                 <div className="habit-row">
@@ -443,11 +441,15 @@ const HabitsView: React.FC = () => {
 
                                 {isOpen && (
                                     <div className="habit-history">
-                                        <Heatmap
-                                            values={values}
-                                            max={1}
-                                            days={WINDOW_DAYS}
-                                            colorVar="--habit-heatmap-color"
+                                        {/* A month, not 53 weeks: when you open one
+                                            habit the question is how this month is
+                                            going, and the bigger cells are legible
+                                            on a phone. */}
+                                        <MonthCalendar
+                                            completed={completed}
+                                            frozen={frozen}
+                                            isDue={iso => isDueOn(habit, iso)}
+                                            color={color}
                                         />
                                     </div>
                                 )}

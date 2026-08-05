@@ -24,6 +24,8 @@ interface Task {
     tier: TaskTier;
     completed: boolean;
     dueDate?: string;
+    /** Daily tasks only. A one-off disappears once it has been completed. */
+    recurring?: boolean;
 }
 
 /**
@@ -47,7 +49,7 @@ const TasksView: React.FC = () => {
     const [activeTab, setActiveTab] = useState<TaskTier>('daily');
 
     const [showForm, setShowForm] = useState(false);
-    const [newTask, setNewTask] = useState({ title: '', points: 50, category: 'Personal', dueDate: '' });
+    const [newTask, setNewTask] = useState({ title: '', points: 50, category: 'Personal', dueDate: '', recurring: false });
 
     // TSK-3 — quick capture. One field, always on screen, no decisions.
     const [capture, setCapture] = useState('');
@@ -65,18 +67,37 @@ const TasksView: React.FC = () => {
         user ? `tasks:${activeTab}:${periodKeyFor(activeTab, today)}` : null,
         async () => {
             if (activeTab === 'daily') {
-                const [rows, comps] = await Promise.all([
-                    fromSupabase(supabase.from('tasks').select('*').eq('inbox', false)
-                        .order('created_at', { ascending: false })),
+                const rows = await fromSupabase(
+                    supabase.from('tasks').select('*').eq('inbox', false)
+                        .order('created_at', { ascending: false })
+                );
+
+                // A one-off is finished forever once it has any completion row;
+                // a recurring task only cares about today. Two lookups rather
+                // than one, and the second is skipped when everything repeats.
+                const oneOffIds = rows.filter(t => !t.recurring).map(t => t.id);
+                const [comps, everDone] = await Promise.all([
                     fromSupabase(supabase.from('task_completions').select('task_id')
-                        .eq('local_date', today))
+                        .eq('local_date', today)),
+                    oneOffIds.length
+                        ? fromSupabase(supabase.from('task_completions').select('task_id')
+                            .in('task_id', oneOffIds))
+                        : Promise.resolve([] as { task_id: string }[])
                 ]);
+
                 const done = new Set(comps.map(c => c.task_id));
-                return rows.map(t => ({
-                    id: t.id, title: t.title, points: t.points,
-                    category: t.category || 'General', tier: 'daily' as TaskTier,
-                    completed: done.has(t.id), dueDate: t.due_date ?? undefined
-                }));
+                const finished = new Set(everDone.map(c => c.task_id));
+
+                return rows
+                    // Keep a one-off finished *today* so it sits in Completed and
+                    // can be un-ticked; from tomorrow it is gone.
+                    .filter(t => t.recurring || !finished.has(t.id) || done.has(t.id))
+                    .map(t => ({
+                        id: t.id, title: t.title, points: t.points,
+                        category: t.category || 'General', tier: 'daily' as TaskTier,
+                        completed: done.has(t.id), dueDate: t.due_date ?? undefined,
+                        recurring: t.recurring
+                    }));
             }
 
             const periodStart = periodKeyFor(activeTab, today);
@@ -175,7 +196,8 @@ const TasksView: React.FC = () => {
                     category: newTask.category,
                     // TSK-4 — the column existed since day one and was never
                     // written, which is what left FIX-7's dashboard filter inert.
-                    due_date: newTask.dueDate || null
+                    due_date: newTask.dueDate || null,
+                    recurring: newTask.recurring
                 });
 
                 if (error) throw error;
@@ -201,7 +223,7 @@ const TasksView: React.FC = () => {
                 invalidate('dashboard');
             }
 
-            setNewTask({ title: '', points: activeTab === 'daily' ? 25 : activeTab === 'weekly' ? 200 : 1000, category: 'Personal', dueDate: '' });
+            setNewTask({ title: '', points: activeTab === 'daily' ? 25 : activeTab === 'weekly' ? 200 : 1000, category: 'Personal', dueDate: '', recurring: false });
             setShowForm(false);
         } catch (error) {
             console.error('Error creating task:', error);
@@ -411,12 +433,32 @@ const TasksView: React.FC = () => {
                         {/* TSK-4 — only daily tasks carry a due date; goals get
                             their period's end date automatically. */}
                         {activeTab === 'daily' && (
-                            <Input
-                                type="date"
-                                label="Due date (optional)"
-                                value={newTask.dueDate}
-                                onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
-                            />
+                            <>
+                                <Input
+                                    type="date"
+                                    label="Due date (optional)"
+                                    value={newTask.dueDate}
+                                    onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
+                                />
+                                {/* One-off is the default: finish it and it is gone.
+                                    Anything you want to keep doing is usually better
+                                    off as a habit, which tracks streaks. */}
+                                <label className="repeat-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={newTask.recurring}
+                                        onChange={e => setNewTask({ ...newTask, recurring: e.target.checked })}
+                                    />
+                                    <span>
+                                        <strong>Repeat every day</strong>
+                                        <span className="text-muted">
+                                            {newTask.recurring
+                                                ? 'Comes back tomorrow. For streaks, use a Habit instead.'
+                                                : 'Disappears once you finish it.'}
+                                        </span>
+                                    </span>
+                                </label>
+                            </>
                         )}
                         <div style={{ display: 'none' }}>
                         </div>

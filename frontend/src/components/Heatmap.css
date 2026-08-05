@@ -1,4 +1,4 @@
-/* HAB-4 — year heatmap. */
+/* HAB-4 — heatmap. */
 
 .heatmap {
     --heatmap-cell: 12px;
@@ -21,16 +21,16 @@
 .heatmap-count {
     font-size: 0.8125rem;
     color: var(--text-secondary);
+    white-space: nowrap;
 }
 
-/* A year of weeks is wider than a phone. Scroll the grid inside its own box so
-   the page body never scrolls horizontally (see CLAUDE.md conventions). */
+/* Wide windows still overflow, so the grid scrolls inside its own box and the
+   page body never scrolls sideways (see CLAUDE.md conventions). `direction: rtl`
+   anchors the initial scroll to the most recent week; the inner element flips it
+   back so content reads left-to-right. */
 .heatmap-scroll {
     overflow-x: auto;
     padding-bottom: 0.25rem;
-    /* Start scrolled to the most recent week, which is the part anyone cares
-       about. `direction: rtl` on the scroller flips the initial scroll anchor;
-       the inner element flips it back so content still reads left-to-right. */
     direction: rtl;
 }
 
@@ -66,13 +66,34 @@
     height: var(--heatmap-cell);
     border-radius: 3px;
     background: var(--surface-hover);
-    /* Faint outline keeps empty cells legible against the panel behind them. */
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-/* Four filled levels built from one colour so a habit's own colour can be
-   passed in via --heatmap-color. color-mix keeps a single source of truth
-   instead of four hand-picked hexes per colour. */
+/* --- why a square is empty -------------------------------------------------
+   These three used to be indistinguishable, which made the map misleading: a
+   Mon–Fri habit's weekends read as failures, and a freeze you deliberately
+   spent read as giving up. */
+
+/* A day you were expected and did not turn up. The most solid empty state. */
+.heatmap-cell.state-missed {
+    background: var(--surface-hover);
+}
+
+/* Never scheduled — should barely register. Deliberately no fill, so the eye
+   skips it rather than counting it against you. */
+.heatmap-cell.state-notDue {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* Bought out with a freeze. Icy, and clearly a deliberate act rather than a gap. */
+.heatmap-cell.state-frozen {
+    background: rgba(125, 211, 252, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.45);
+}
+
+/* Four filled levels from one colour, so a habit can pass its own via
+   --heatmap-color instead of needing four hand-picked hexes each. */
 .heatmap-cell.level-1 {
     background: color-mix(in srgb, var(--heatmap-color) 28%, transparent);
 }
@@ -92,21 +113,50 @@
 .heatmap-legend {
     display: flex;
     align-items: center;
-    gap: var(--heatmap-gap);
-    margin-top: 0.5rem;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.625rem;
     font-size: 0.6875rem;
     color: var(--text-muted);
-    justify-content: flex-end;
 }
 
-.heatmap-legend>span:first-child,
-.heatmap-legend>span:last-child {
+.heatmap-key,
+.heatmap-scale {
+    display: flex;
+    align-items: center;
+    gap: var(--heatmap-gap);
+}
+
+.heatmap-key {
+    gap: 0.75rem;
+}
+
+.heatmap-key span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* Legend swatches are <i>, so they need the box explicitly. */
+.heatmap-legend i.heatmap-cell {
+    display: inline-block;
+}
+
+.heatmap-scale>span:first-child,
+.heatmap-scale>span:last-child {
     margin: 0 0.25rem;
 }
 
+/* Bigger cells on a phone, not smaller. The window shrinks instead — see the
+   comment at the top of Heatmap.tsx. */
 @media (max-width: 640px) {
     .heatmap {
-        --heatmap-cell: 10px;
-        --heatmap-gap: 2px;
+        --heatmap-cell: 15px;
+        --heatmap-gap: 3px;
+    }
+
+    .heatmap-legend {
+        justify-content: flex-start;
     }
 }
