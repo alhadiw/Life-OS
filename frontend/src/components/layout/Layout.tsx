@@ -18,13 +18,16 @@ const PRIMARY = [
     { to: '/', label: 'Dashboard', Icon: LayoutDashboard, end: true },
     { to: '/tasks', label: 'Tasks', Icon: CheckSquare },
     { to: '/habits', label: 'Habits', Icon: Flame },
-    { to: '/finance', label: 'Finance', Icon: Wallet }
+    // Lists over Finance in the fourth slot: Finance is a weekly check-in,
+    // lists get opened constantly. The bar should hold what you reach for, not
+    // what sounds important.
+    { to: '/lists', label: 'My Lists', Icon: List }
 ];
 
 const OVERFLOW = [
+    { to: '/finance', label: 'Finance Hub', Icon: Wallet },
     { to: '/books', label: 'Books', Icon: BookOpen },
     { to: '/exercise', label: 'Exercise', Icon: Activity },
-    { to: '/lists', label: 'My Lists', Icon: List },
     { to: '/history', label: 'Points History', Icon: History },
     { to: '/settings', label: 'Settings', Icon: Settings }
 ];
