@@ -190,6 +190,14 @@ const SettingsView: React.FC = () => {
      * Until then this is presented for what it actually is — erasing your data,
      * not deleting your account. The previous version claimed to delete the
      * account, silently no-op'd on the profile, and reported success anyway.
+     *
+     * The table list used to live here, inline. Phase 3 added six tables and
+     * nobody updated it, so erasing "all your data" quietly left every habit,
+     * completion record and bill payment in place — reported as a success. The
+     * list now lives in Postgres (`erase_my_data()`), derived from the catalog
+     * rather than maintained by hand, so a table added later is covered the day
+     * it exists. It is also one transaction instead of sixteen parallel
+     * requests, so a failure can no longer leave the account half-wiped.
      */
     const handleEraseAllData = async () => {
         if (!user) return;
@@ -202,26 +210,12 @@ const SettingsView: React.FC = () => {
 
         setIsDeleting(true);
         try {
-            // list_items cascades from user_lists, so it isn't listed here.
-            const results = await Promise.all([
-                supabase.from('tasks').delete().eq('user_id', user.id),
-                supabase.from('goals').delete().eq('user_id', user.id),
-                supabase.from('finance_bills').delete().eq('user_id', user.id),
-                supabase.from('finance_savings').delete().eq('user_id', user.id),
-                supabase.from('finance_investments').delete().eq('user_id', user.id),
-                supabase.from('books').delete().eq('user_id', user.id),
-                supabase.from('exercises').delete().eq('user_id', user.id),
-                supabase.from('exercise_goals').delete().eq('user_id', user.id),
-                supabase.from('user_lists').delete().eq('user_id', user.id),
-                supabase.from('points_history').delete().eq('user_id', user.id)
-            ]);
+            const { data: removed, error } = await supabase.rpc('erase_my_data');
+            if (error) throw error;
 
-            // Previously every one of these errors was discarded, so a partial
-            // wipe reported the same success as a complete one.
-            const failure = results.find(r => r.error);
-            if (failure?.error) throw failure.error;
-
-            toast.success('All your data has been erased. Signing you out.');
+            toast.success(
+                `${(removed ?? 0).toLocaleString()} record${removed === 1 ? '' : 's'} erased. Signing you out.`
+            );
             await signOut();
         } catch (err) {
             console.error('Failed to erase account data:', err);
